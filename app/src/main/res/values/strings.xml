@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">aShorts</string>
+    <string name="service_label">aShorts — Reels blocker</string>
+    <string name="service_summary">Hides the Instagram Reels tab and blocks the Reels feed</string>
+    <string name="service_description">aShorts watches only the Instagram app and covers the Reels
+        tab and the Reels feed so you can use Instagram without the endless scroll. It reads the
+        screen layout on your device only, has no internet permission, and never sends data
+        anywhere.</string>
+</resources>

@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- circle -->
+    <path
+        android:pathData="M54,26 A28,28 0 1 1 54,82 A28,28 0 1 1 54,26"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:fillColor="#00000000" />
+    <!-- play triangle -->
+    <path
+        android:pathData="M48,44 L66,54 L48,64 Z"
+        android:fillColor="#FFFFFF" />
+    <!-- slash -->
+    <path
+        android:pathData="M30,78 L78,30"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+</vector>
