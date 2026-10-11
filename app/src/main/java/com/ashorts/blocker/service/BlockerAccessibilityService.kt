@@ -16,7 +16,6 @@ import com.ashorts.blocker.engine.BlockerAction
 import com.ashorts.blocker.engine.DetectionEngine
 import com.ashorts.blocker.engine.InstagramRules
 import com.ashorts.blocker.engine.IntBounds
-import com.ashorts.blocker.engine.PatchColorMath
 import com.ashorts.blocker.engine.ReelsGatekeeper
 import com.ashorts.blocker.engine.expandedTabBounds
 import com.ashorts.blocker.log.DetectionLog
@@ -44,9 +43,6 @@ class BlockerAccessibilityService : AccessibilityService() {
     /** Height of the system navigation bar at the bottom; the patch must stay above it. */
     private var navBarBottomInset = 0
 
-    private lateinit var colorSampler: BarColorSampler
-    private var lastColorSampleAt = 0L
-
     private var master: Boolean = Prefs.DEFAULT_MASTER
     private var hideTab: Boolean = Prefs.DEFAULT_HIDE_TAB
     private var useBlocker: Boolean = Prefs.DEFAULT_BLOCKER
@@ -69,7 +65,6 @@ class BlockerAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
-        colorSampler = BarColorSampler(this)
         engine = DetectionEngine(InstagramRules.rules(Prefs.DEFAULT_AGGRESSIVE))
         refreshScreenSize()
         gatekeeper = ReelsGatekeeper { node ->
@@ -100,8 +95,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         super.onConfigurationChanged(newConfig)
         if (this::overlay.isInitialized) {
             overlay.resetCalibration()
-            overlay.resetPatchColor() // dark/light switch changes the bar color
-            overlay.hidePatch() // repositioned (and resampled) on the next scan
+            overlay.hidePatch() // re-created (position and dark/light color) on the next scan
         }
         refreshScreenSize()
     }
@@ -116,6 +110,10 @@ class BlockerAccessibilityService : AccessibilityService() {
             engine = DetectionEngine(InstagramRules.rules(newAggressive))
         }
         aggressive = newAggressive
+        if (this::overlay.isInitialized) {
+            overlay.barTheme = p.getString(Prefs.KEY_BAR_THEME, Prefs.DEFAULT_BAR_THEME)
+                ?: Prefs.DEFAULT_BAR_THEME
+        }
 
         if (this::overlay.isInitialized && this::gatekeeper.isInitialized) {
             if (!master) {
@@ -161,24 +159,6 @@ class BlockerAccessibilityService : AccessibilityService() {
         return if (id > 0) resources.getDimensionPixelSize(id) else 0
     }
 
-    /**
-     * Resample the bar color whenever the patch is created or moves, at most once a second
-     * (the system rate-limits accessibility screenshots anyway).
-     */
-    private fun maybeSamplePatchColor(bounds: IntBounds) {
-        if (!colorSampler.isSupported) return
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastColorSampleAt < 1000) return
-        lastColorSampleAt = now
-        colorSampler.sample(bounds) { color ->
-            if (!overlay.isPatchShowing) return@sample
-            overlay.setPatchColor(color)
-            DetectionLog.add(
-                listOf("patch color sampled: ${PatchColorMath.hex(color)}"),
-                screenDetected = false
-            )
-        }
-    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -235,8 +215,7 @@ class BlockerAccessibilityService : AccessibilityService() {
                 }
                 is BlockerAction.ShowCover -> overlay.showBlocker(onLeave = { onManualLeave() })
                 is BlockerAction.HideCover -> overlay.hideBlocker()
-                is BlockerAction.ShowPatch ->
-                    if (overlay.showPatch(action.bounds)) maybeSamplePatchColor(action.bounds)
+                is BlockerAction.ShowPatch -> overlay.showPatch(action.bounds)
                 is BlockerAction.HidePatch -> overlay.hidePatch()
                 is BlockerAction.Record -> DetectionLog.add(action.details, action.screenDetected)
             }

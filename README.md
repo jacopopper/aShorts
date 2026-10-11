@@ -65,6 +65,7 @@ To uninstall: turn the accessibility service off first, then uninstall normally.
 | --- | --- |
 | Block Instagram Reels | Master switch. Turning it **off** triggers the strict countdown. |
 | Hide the Reels tab | The patch over the bottom-bar button. |
+| Instagram theme | Patch color. Auto follows the phone's theme; pick Dark or Light if Instagram's own appearance setting differs. |
 | Fallback cover | The minimal one-button cover, shown only if leaving Reels automatically fails. |
 | Aggressive matching | Backup: also treats screens *described* as "Reels" as the feed. Use when an Instagram update breaks id-based detection. May over-block. |
 | Wait before disabling | The strict-mode countdown length (off / 30 s / 1 min / 2 min / 5 min). |
@@ -86,12 +87,16 @@ rotation and repositioned on the next scan; that is expected.
 ## Building from source
 
 ```bash
-# JDK 17+ and an Android SDK with platform 35 are required (see local.properties)
+# JDK 17+ and an Android SDK with platform 36 are required (see local.properties)
 ./gradlew assembleDebug          # APK in app/build/outputs/apk/debug/
 ./gradlew testDebugUnitTest      # engine, gatekeeper and calibration tests (pure JVM)
+./gradlew :app:bundleRelease     # signed Play bundle (needs keystore.properties, see .example)
+python3 tools/render_store_assets.py   # Play icon + feature graphic from the launcher icon
 ```
 
-Stack: Kotlin 2.1, AGP 8.7, Jetpack Compose (Material 3), minSdk 26 / targetSdk 35.
+Stack: Kotlin 2.1, AGP 8.10, Jetpack Compose (Material 3), minSdk 26 / targetSdk 36.
+
+Publishing on Google Play: see [play/PLAY-CONSOLE.md](play/PLAY-CONSOLE.md).
 
 ## Testing
 

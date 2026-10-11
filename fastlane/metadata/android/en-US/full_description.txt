@@ -1,0 +1,21 @@
+aShorts takes the Reels out of Instagram and leaves everything else alone. Messages, stories, your feed and your profile work as usual. The endless short-video scroll does not.
+
+WHAT IT DOES
+• Hides the Reels tab in Instagram's bottom bar, so there is nothing to tap.
+• If Reels opens anyway (from a link or a shared post), aShorts closes it right away, before the audio gets going.
+• Strict mode: turning blocking off takes a countdown, so a weak moment passes before the scroll comes back.
+
+PRIVATE BY DESIGN
+• No account, no ads, no tracking.
+• aShorts has no internet permission, so nothing can leave your phone.
+• It only looks at Instagram, and only while Instagram is on screen.
+
+LIGHT ON BATTERY
+aShorts does nothing while Instagram is closed. While it is open, aShorts runs a few small checks per second and stops early.
+
+ACCESSIBILITY SERVICE
+aShorts uses Android's AccessibilityService API to work. While Instagram is open, it reads the names and positions of on-screen elements to find the Reels tab and the Reels viewer, covers the tab, and presses Back when Reels opens. It does not collect, store or share personal data, and it does not read what you type or your messages. The app asks for your consent before you turn the service on, and you can turn it off at any time in Android's Accessibility settings.
+
+aShorts also needs permission to display over other apps, to draw the cover over the Reels tab.
+
+aShorts is an independent app. It is not affiliated with, endorsed by or sponsored by Instagram or Meta. Instagram is a trademark of Meta Platforms, Inc.

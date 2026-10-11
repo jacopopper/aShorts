@@ -1,22 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A reel card with a pause cut out of it ("the scroll is paused"); a faint card behind
+     suggests the feed. Kept inside the 66dp adaptive-icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- circle -->
+    <!-- Back card minus the front card's outline (even-odd), so the pause cut-outs show the
+         gradient instead of the translucent back card. -->
     <path
-        android:pathData="M54,26 A28,28 0 1 1 54,82 A28,28 0 1 1 54,26"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="7"
-        android:fillColor="#00000000" />
-    <!-- play triangle -->
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.32"
+        android:fillType="evenOdd"
+        android:pathData="M49,29h20a8,8 0 0 1 8,8v34a8,8 0 0 1 -8,8h-20a8,8 0 0 1 -8,-8v-34a8,8 0 0 1 8,-8z
+            M42,33h20a9,9 0 0 1 9,9v32a9,9 0 0 1 -9,9h-20a9,9 0 0 1 -9,-9v-32a9,9 0 0 1 9,-9z" />
     <path
-        android:pathData="M48,44 L66,54 L48,64 Z"
-        android:fillColor="#FFFFFF" />
-    <!-- slash -->
-    <path
-        android:pathData="M30,78 L78,30"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="8"
-        android:strokeLineCap="round" />
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M42,33h20a9,9 0 0 1 9,9v32a9,9 0 0 1 -9,9h-20a9,9 0 0 1 -9,-9v-32a9,9 0 0 1 9,-9z
+            M44.5,48h3a2.5,2.5 0 0 1 2.5,2.5v15a2.5,2.5 0 0 1 -2.5,2.5h-3a2.5,2.5 0 0 1 -2.5,-2.5v-15a2.5,2.5 0 0 1 2.5,-2.5z
+            M56.5,48h3a2.5,2.5 0 0 1 2.5,2.5v15a2.5,2.5 0 0 1 -2.5,2.5h-3a2.5,2.5 0 0 1 -2.5,-2.5v-15a2.5,2.5 0 0 1 2.5,-2.5z" />
 </vector>

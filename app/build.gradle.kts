@@ -14,14 +14,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.ashorts.blocker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.ashorts.blocker"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
+        targetSdk = 36
+        versionCode = 6
+        versionName = "0.6.0"
 
         // Release builds watch Instagram only. Debug builds additionally watch the local
         // test harness app so the emulator E2E suite can exercise the whole pipeline.

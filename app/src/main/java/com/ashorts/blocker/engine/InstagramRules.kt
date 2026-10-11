@@ -19,6 +19,10 @@ object InstagramRules {
 
     const val PACKAGE = "com.instagram.android"
 
+    /** Bottom-bar background, measured from a device screenshot (dark is not pure black). */
+    const val BAR_COLOR_DARK = 0xFF0C0F14.toInt()
+    const val BAR_COLOR_LIGHT = 0xFFFFFFFF.toInt()
+
     private val SCREEN_ID_SUBSTRINGS = listOf(
         "clips_viewer",   // confirmed on-device: clips_viewer_debug_container
         "clips_pager",

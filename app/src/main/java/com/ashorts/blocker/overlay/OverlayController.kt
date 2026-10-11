@@ -13,8 +13,10 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.ashorts.blocker.engine.InstagramRules
 import com.ashorts.blocker.engine.IntBounds
 import com.ashorts.blocker.log.DetectionLog
+import com.ashorts.blocker.prefs.Prefs
 
 /**
  * Draws the two overlays over the watched app:
@@ -145,12 +147,8 @@ class OverlayController(private val context: Context) {
 
     // ---------------------------------------------------------------- Reels tab patch
 
-    /** Color sampled from the watched app's bar; null until a sample succeeds. */
-    private var patchColor: Int? = null
-
-    /** Returns true when the patch was created or moved (a good moment to resample color). */
-    fun showPatch(bounds: IntBounds): Boolean {
-        if (!canDraw()) return false
+    fun showPatch(bounds: IntBounds) {
+        if (!canDraw()) return
         // Apply the calibration learned so far; skip no-op updates so a static bar does not
         // churn the window manager every scan.
         val target = IntBounds(
@@ -159,7 +157,7 @@ class OverlayController(private val context: Context) {
             bounds.right + offsetX,
             bounds.bottom + offsetY
         )
-        if (target == lastApplied && patchView != null) return false
+        if (target == lastApplied && patchView != null) return
         lastApplied = target
 
         val view = patchView
@@ -171,24 +169,12 @@ class OverlayController(private val context: Context) {
                 isPatchShowing = true
             } catch (_: Exception) {
                 // Ignore; will retry on the next scan.
-                return false
+                return
             }
         } else {
             runCatching { wm.updateViewLayout(view, patchParams(target)) }
         }
         scheduleCalibration()
-        return true
-    }
-
-    fun setPatchColor(color: Int) {
-        patchColor = color
-        patchView?.setBackgroundColor(color)
-    }
-
-    /** Theme changes make the sampled color stale; fall back until the next sample. */
-    fun resetPatchColor() {
-        patchColor = null
-        patchView?.setBackgroundColor(fallbackPatchColor())
     }
 
     fun hidePatch() {
@@ -271,14 +257,27 @@ class OverlayController(private val context: Context) {
             y = b.top
         }
 
-    private fun fallbackPatchColor(): Int = if (isNight()) Color.BLACK else Color.WHITE
+    /** One of Prefs.THEME_*; changing it recolors a patch that is already showing. */
+    var barTheme: String = Prefs.DEFAULT_BAR_THEME
+        set(value) {
+            field = value
+            patchView?.setBackgroundColor(patchColor())
+        }
+
+    private fun patchColor(): Int {
+        val dark = when (barTheme) {
+            Prefs.THEME_DARK -> true
+            Prefs.THEME_LIGHT -> false
+            else -> isNight() // Instagram follows the system theme by default
+        }
+        return if (dark) InstagramRules.BAR_COLOR_DARK else InstagramRules.BAR_COLOR_LIGHT
+    }
 
     /**
-     * Opaque rectangle painted in the bar's sampled color (black/white until a sample
-     * succeeds), so it blends into the bar. Touches inside its bounds land on this window
-     * instead of the Reels tab underneath.
+     * Opaque rectangle in Instagram's bar color, so it blends into the bar. Touches inside its
+     * bounds land on this window instead of the Reels tab underneath.
      */
     private fun createPatchView(): View = View(context).apply {
-        setBackgroundColor(patchColor ?: fallbackPatchColor())
+        setBackgroundColor(patchColor())
     }
 }

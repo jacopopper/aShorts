@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private val refreshTick = mutableIntStateOf(0)
     var pendingDisable by mutableStateOf(false)
     var showLog by mutableStateOf(false)
+    var showDisclosure by mutableStateOf(false)
 
     override fun onResume() {
         super.onResume()
@@ -105,6 +106,12 @@ class MainActivity : ComponentActivity() {
         var aggressive by remember(tick) {
             mutableStateOf(prefs.getBoolean(Prefs.KEY_AGGRESSIVE, Prefs.DEFAULT_AGGRESSIVE))
         }
+        var barTheme by remember(tick) {
+            mutableStateOf(
+                prefs.getString(Prefs.KEY_BAR_THEME, Prefs.DEFAULT_BAR_THEME)
+                    ?: Prefs.DEFAULT_BAR_THEME
+            )
+        }
 
         val serviceOk = remember(tick) { AppStatus.isServiceEnabled(ctx) }
         val overlayOk = remember(tick) { AppStatus.isOverlayGranted(ctx) }
@@ -138,9 +145,18 @@ class MainActivity : ComponentActivity() {
                         icon = Icons.Filled.Warning,
                         title = "Accessibility service is off",
                         subtitle = "aShorts watches only Instagram.",
-                        button = "Open settings"
+                        button = "Turn on"
                     ) {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        showDisclosure = true
+                    }
+                    if (showDisclosure) {
+                        AccessibilityDisclosureDialog(
+                            onAgree = {
+                                showDisclosure = false
+                                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            },
+                            onDecline = { showDisclosure = false }
+                        )
                     }
                     if (Build.VERSION.SDK_INT >= 33) {
                         Text(
@@ -214,6 +230,11 @@ class MainActivity : ComponentActivity() {
                     useBlocker = useBlocker,
                     aggressive = aggressive,
                     cooldownSec = cooldownSec,
+                    barTheme = barTheme,
+                    onBarTheme = {
+                        barTheme = it
+                        prefs.edit().putString(Prefs.KEY_BAR_THEME, it).apply()
+                    },
                     onHideTab = { hideTab = it; putBoolean(Prefs.KEY_HIDE_TAB, it) },
                     onBlocker = { useBlocker = it; putBoolean(Prefs.KEY_BLOCKER, it) },
                     onAggressive = { aggressive = it; putBoolean(Prefs.KEY_AGGRESSIVE, it) },
@@ -355,6 +376,8 @@ class MainActivity : ComponentActivity() {
         useBlocker: Boolean,
         aggressive: Boolean,
         cooldownSec: Int,
+        barTheme: String,
+        onBarTheme: (String) -> Unit,
         onHideTab: (Boolean) -> Unit,
         onBlocker: (Boolean) -> Unit,
         onAggressive: (Boolean) -> Unit,
@@ -376,6 +399,19 @@ class MainActivity : ComponentActivity() {
                     hideTab,
                     onHideTab
                 )
+                if (hideTab) {
+                    PickerRow(
+                        title = "Instagram theme",
+                        subtitle = "Set this if Instagram's appearance differs from your phone's.",
+                        options = listOf(
+                            Prefs.THEME_AUTO to "Auto",
+                            Prefs.THEME_DARK to "Dark",
+                            Prefs.THEME_LIGHT to "Light"
+                        ),
+                        selected = barTheme,
+                        onPick = onBarTheme
+                    )
+                }
                 OptionSwitch(
                     "Fallback cover",
                     "Shown only if leaving Reels automatically fails.",
@@ -420,6 +456,23 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CooldownRow(seconds: Int, onPick: (Int) -> Unit) {
+        PickerRow(
+            title = "Wait before disabling",
+            subtitle = "How long turning blocking off takes.",
+            options = listOf(0, 30, 60, 120, 300).map { it to cooldownLabel(it) },
+            selected = seconds,
+            onPick = onPick
+        )
+    }
+
+    @Composable
+    private fun <T> PickerRow(
+        title: String,
+        subtitle: String,
+        options: List<Pair<T, String>>,
+        selected: T,
+        onPick: (T) -> Unit
+    ) {
         var expanded by remember { mutableStateOf(false) }
         Row(
             modifier = Modifier
@@ -428,21 +481,23 @@ class MainActivity : ComponentActivity() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Wait before disabling", style = MaterialTheme.typography.bodyMedium)
+                Text(title, style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "How long turning blocking off takes.",
+                    subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Box {
-                TextButton(onClick = { expanded = true }) { Text(cooldownLabel(seconds)) }
+                val label = options.firstOrNull { it.first == selected }?.second
+                    ?: selected.toString()
+                TextButton(onClick = { expanded = true }) { Text(label) }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    listOf(0, 30, 60, 120, 300).forEach { s ->
+                    options.forEach { (value, text) ->
                         DropdownMenuItem(
-                            text = { Text(cooldownLabel(s)) },
+                            text = { Text(text) },
                             onClick = {
-                                onPick(s)
+                                onPick(value)
                                 expanded = false
                             }
                         )

@@ -12,3 +12,6 @@ captures/
 *.apk
 *.aab
 .DS_Store
+.gplay/
+*service-account*.json
+*serviceaccount*.json
