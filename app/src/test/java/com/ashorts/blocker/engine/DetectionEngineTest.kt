@@ -255,8 +255,42 @@ class DetectionEngineTest {
         cell.parentNode = bar
 
         val patch = expandedTabBounds(icon, screenWidth, screenHeight)
-        // Full bar height (down to the screen bottom), full cell width.
-        assertEquals(IntBounds(432, 2280, 648, 2400), patch)
+        // From the bar's top to the cell's bottom, full cell width.
+        assertEquals(IntBounds(432, 2280, 648, 2392), patch)
+    }
+
+    /**
+     * Regression (real device log): edge-to-edge Instagram draws its full-width bar container
+     * down behind the system navigation bar. Its bottom must not be used, or the patch covers
+     * the recents button.
+     */
+    @Test
+    fun expandedTabBoundsStopAboveTheSystemNavigationBar() {
+        val tab = FakeNode(
+            viewId = "com.instagram.android:id/clips_tab",
+            isClickable = true,
+            contentDescription = "Reels",
+            bounds = IntBounds(216, 2112, 432, 2256)
+        )
+        val barContainer = FakeNode(
+            viewId = "com.instagram.android:id/tab_bar",
+            bounds = IntBounds(0, 2112, 1080, 2400) // 2256..2400 is behind the nav bar
+        )
+        tab.parentNode = barContainer
+
+        assertEquals(IntBounds(216, 2112, 432, 2256), expandedTabBounds(tab, screenWidth, screenHeight))
+    }
+
+    @Test
+    fun expandedTabBoundsClampToMaxBottom() {
+        // Even a cell that itself reaches behind the nav bar is clamped to the nav bar's top.
+        val tab = FakeNode(
+            contentDescription = "Reels",
+            isClickable = true,
+            bounds = IntBounds(216, 2112, 432, 2400)
+        )
+        val patch = expandedTabBounds(tab, screenWidth, screenHeight, maxBottom = 2256)
+        assertEquals(IntBounds(216, 2112, 432, 2256), patch)
     }
 
     @Test
@@ -273,8 +307,8 @@ class DetectionEngineTest {
 
         val patch = expandedTabBounds(icon, screenWidth, screenHeight)
         // The full-screen ancestor (top=0) must stop the walk: top stays at the bar's top and
-        // its full width must not leak into the patch.
-        assertEquals(IntBounds(528, 2280, 560, 2400), patch)
+        // neither its full width nor the full-width bar's bottom leaks into the patch.
+        assertEquals(IntBounds(528, 2280, 560, 2360), patch)
     }
 
     @Test
@@ -292,7 +326,7 @@ class DetectionEngineTest {
         cell.parentNode = bar
 
         val patch = expandedTabBounds(icon, screenWidth, screenHeight)
-        // The empty-bounds ancestor is skipped, the cell widens us, the bar gives the height.
-        assertEquals(IntBounds(432, 2280, 648, 2400), patch)
+        // The empty-bounds ancestor is skipped, the cell widens us, the bar gives the top.
+        assertEquals(IntBounds(432, 2280, 648, 2392), patch)
     }
 }

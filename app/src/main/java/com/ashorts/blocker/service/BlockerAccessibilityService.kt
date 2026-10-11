@@ -9,12 +9,14 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.WindowInsets
 import android.view.WindowManager
 import com.ashorts.blocker.BuildConfig
 import com.ashorts.blocker.engine.BlockerAction
 import com.ashorts.blocker.engine.DetectionEngine
 import com.ashorts.blocker.engine.InstagramRules
 import com.ashorts.blocker.engine.IntBounds
+import com.ashorts.blocker.engine.PatchColorMath
 import com.ashorts.blocker.engine.ReelsGatekeeper
 import com.ashorts.blocker.engine.expandedTabBounds
 import com.ashorts.blocker.log.DetectionLog
@@ -39,6 +41,12 @@ class BlockerAccessibilityService : AccessibilityService() {
     /** Real physical screen size — NOT resources.displayMetrics, which excludes system bars. */
     private var screenSize = IntBounds(0, 0, 1080, 2340)
 
+    /** Height of the system navigation bar at the bottom; the patch must stay above it. */
+    private var navBarBottomInset = 0
+
+    private lateinit var colorSampler: BarColorSampler
+    private var lastColorSampleAt = 0L
+
     private var master: Boolean = Prefs.DEFAULT_MASTER
     private var hideTab: Boolean = Prefs.DEFAULT_HIDE_TAB
     private var useBlocker: Boolean = Prefs.DEFAULT_BLOCKER
@@ -61,10 +69,16 @@ class BlockerAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
+        colorSampler = BarColorSampler(this)
         engine = DetectionEngine(InstagramRules.rules(Prefs.DEFAULT_AGGRESSIVE))
         refreshScreenSize()
         gatekeeper = ReelsGatekeeper { node ->
-            expandedTabBounds(node, screenSize.width, screenSize.height)
+            expandedTabBounds(
+                node,
+                screenSize.width,
+                screenSize.height,
+                maxBottom = screenSize.height - navBarBottomInset
+            )
         }
         prefs = Prefs.get(this).also { it.registerOnSharedPreferenceChangeListener(prefListener) }
         DetectionLog.init(filesDir)
@@ -86,7 +100,8 @@ class BlockerAccessibilityService : AccessibilityService() {
         super.onConfigurationChanged(newConfig)
         if (this::overlay.isInitialized) {
             overlay.resetCalibration()
-            overlay.hidePatch() // repositioned on the next scan
+            overlay.resetPatchColor() // dark/light switch changes the bar color
+            overlay.hidePatch() // repositioned (and resampled) on the next scan
         }
         refreshScreenSize()
     }
@@ -116,6 +131,7 @@ class BlockerAccessibilityService : AccessibilityService() {
     private fun refreshScreenSize() {
         try {
             val wm = getSystemService(WindowManager::class.java) ?: return
+            navBarBottomInset = navigationBarBottomInset(wm)
             screenSize = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val b = wm.currentWindowMetrics.bounds
                 IntBounds(b.left, b.top, b.right, b.bottom)
@@ -129,6 +145,38 @@ class BlockerAccessibilityService : AccessibilityService() {
             }
         } catch (_: Exception) {
             // Keep the previous size.
+        }
+    }
+
+    private fun navigationBarBottomInset(wm: WindowManager): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return wm.currentWindowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
+                .bottom
+        }
+        // Pre-Android 11: the nav bar sits at the bottom only in portrait.
+        if (resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT) return 0
+        @Suppress("DiscouragedApi", "InternalInsetResource")
+        val id = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    /**
+     * Resample the bar color whenever the patch is created or moves, at most once a second
+     * (the system rate-limits accessibility screenshots anyway).
+     */
+    private fun maybeSamplePatchColor(bounds: IntBounds) {
+        if (!colorSampler.isSupported) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastColorSampleAt < 1000) return
+        lastColorSampleAt = now
+        colorSampler.sample(bounds) { color ->
+            if (!overlay.isPatchShowing) return@sample
+            overlay.setPatchColor(color)
+            DetectionLog.add(
+                listOf("patch color sampled: ${PatchColorMath.hex(color)}"),
+                screenDetected = false
+            )
         }
     }
 
@@ -187,7 +235,8 @@ class BlockerAccessibilityService : AccessibilityService() {
                 }
                 is BlockerAction.ShowCover -> overlay.showBlocker(onLeave = { onManualLeave() })
                 is BlockerAction.HideCover -> overlay.hideBlocker()
-                is BlockerAction.ShowPatch -> overlay.showPatch(action.bounds)
+                is BlockerAction.ShowPatch ->
+                    if (overlay.showPatch(action.bounds)) maybeSamplePatchColor(action.bounds)
                 is BlockerAction.HidePatch -> overlay.hidePatch()
                 is BlockerAction.Record -> DetectionLog.add(action.details, action.screenDetected)
             }

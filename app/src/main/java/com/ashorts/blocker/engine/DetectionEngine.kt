@@ -95,18 +95,27 @@ class DetectionEngine(private val rules: AppBlockRules) {
  * Turns a matched tab node into patch bounds that cover the whole visible button.
  *
  * The node we match may be smaller than what is actually drawn on screen (an icon inside a cell,
- * a cell above the gesture-nav strip, a label under the icon...). So we walk up the parent chain:
+ * a label under the icon...). So we walk up the parent chain:
  *
- *  - vertically: from the top of the tallest enclosing ancestor that is still inside the bottom
- *    region, down to the very bottom of the screen (covering the gesture-nav strip as well);
- *  - horizontally: to the widest ancestor narrower than the full bar, so the patch covers the
- *    entire tappable cell without eating the neighbouring tabs.
+ *  - top: the top of the highest enclosing ancestor still inside the bottom region (the bar);
+ *  - bottom and sides: only from cell-sized ancestors (narrower than the full bar). In
+ *    edge-to-edge layouts the full-width bar container extends down *behind the system
+ *    navigation bar*; taking its bottom made the patch cover the recents button. [maxBottom]
+ *    (the top of the system nav bar) clamps as a second safety net;
+ *  - horizontally the widest such cell wins, so the patch covers the entire tappable cell
+ *    without eating the neighbouring tabs.
  */
-fun expandedTabBounds(tab: NodeHandle, screenWidth: Int, screenHeight: Int): IntBounds {
+fun expandedTabBounds(
+    tab: NodeHandle,
+    screenWidth: Int,
+    screenHeight: Int,
+    maxBottom: Int = screenHeight
+): IntBounds {
     val regionTop = (screenHeight * 0.60f).toInt()
     var left = tab.bounds.left
     var right = tab.bounds.right
     var top = tab.bounds.top
+    var bottom = tab.bounds.bottom
 
     var current = tab.parent()
     while (current != null) {
@@ -120,6 +129,7 @@ fun expandedTabBounds(tab: NodeHandle, screenWidth: Int, screenHeight: Int): Int
         if (b.width < screenWidth * 0.80f) {
             left = min(left, b.left)
             right = max(right, b.right)
+            bottom = max(bottom, b.bottom)
         }
         current = current.parent()
     }
@@ -127,5 +137,8 @@ fun expandedTabBounds(tab: NodeHandle, screenWidth: Int, screenHeight: Int): Int
     left = left.coerceIn(0, screenWidth - 2)
     right = right.coerceIn(left + 1, screenWidth)
     top = top.coerceIn(regionTop, screenHeight - 2)
-    return IntBounds(left, top, right, screenHeight)
+    val hardBottom = min(screenHeight, maxBottom)
+    bottom = bottom.coerceAtMost(hardBottom)
+    if (bottom <= top + 1) bottom = min(top + 2, hardBottom)
+    return IntBounds(left, top, right, bottom)
 }
