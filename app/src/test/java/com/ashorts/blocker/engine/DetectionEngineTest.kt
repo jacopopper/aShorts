@@ -16,8 +16,10 @@ private class FakeNode(
     override val depth: Int = 0,
     private val children: List<NodeHandle> = emptyList()
 ) : NodeHandle {
+    var parentNode: NodeHandle? = null
     override val childCount: Int get() = children.size
     override fun childAt(index: Int): NodeHandle? = children.getOrNull(index)
+    override fun parent(): NodeHandle? = parentNode
 }
 
 class DetectionEngineTest {
@@ -79,8 +81,8 @@ class DetectionEngineTest {
         )
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
         assertFalse(result.reelsScreenDetected)
-        assertNotNull(result.reelsTabBounds)
-        assertEquals(reelsTab.bounds, result.reelsTabBounds)
+        assertNotNull(result.reelsTab)
+        assertEquals(reelsTab.bounds, result.reelsTab?.bounds)
     }
 
     @Test
@@ -93,8 +95,8 @@ class DetectionEngineTest {
         )
         val root = FakeNode(children = listOf(tab))
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
-        assertNotNull(result.reelsTabBounds)
-        assertEquals(tab.bounds, result.reelsTabBounds)
+        assertNotNull(result.reelsTab)
+        assertEquals(tab.bounds, result.reelsTab?.bounds)
     }
 
     @Test
@@ -106,7 +108,7 @@ class DetectionEngineTest {
         )
         val root = FakeNode(children = listOf(label))
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
-        assertNull(result.reelsTabBounds)
+        assertNull(result.reelsTab)
         assertFalse(result.reelsScreenDetected)
     }
 
@@ -121,7 +123,7 @@ class DetectionEngineTest {
         )
         val root = FakeNode(children = listOf(row))
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
-        assertNull(result.reelsTabBounds)
+        assertNull(result.reelsTab)
     }
 
     @Test
@@ -136,7 +138,7 @@ class DetectionEngineTest {
         )
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
         assertFalse(result.reelsScreenDetected)
-        assertNull(result.reelsTabBounds)
+        assertNull(result.reelsTab)
         assertTrue(result.matched.isEmpty())
     }
 
@@ -193,7 +195,65 @@ class DetectionEngineTest {
         val result = DetectionEngine(rules.copy(maxNodes = 5))
             .scan(root, screenWidth, screenHeight)
         assertTrue(result.reelsScreenDetected)
-        assertNotNull(result.reelsTabBounds)
-        // With maxNodes=5 (root, tab bar, reels tab, second branch, deepReelId) everything still fits.
+        assertNotNull(result.reelsTab)
+        // With maxNodes=5 (root, tab bar, reels tab, second branch, deepReelId) everything fits.
+    }
+
+    // ----------------------------------------------------------- patch bounds expansion
+
+    @Test
+    fun expandedTabBoundsCoverTheFullCellAndBarHeight() {
+        // The matched node is just the icon; the visible button is the cell inside the bar.
+        val icon = FakeNode(
+            viewId = "com.instagram.android:id/reel_tab_icon",
+            isClickable = true,
+            contentDescription = "Reels",
+            bounds = IntBounds(528, 2330, 560, 2360)
+        )
+        val cell = FakeNode(viewId = "com.instagram.android:id/tab_cell", bounds = IntBounds(432, 2300, 648, 2392))
+        val bar = FakeNode(viewId = "com.instagram.android:id/bottom_bar", bounds = IntBounds(0, 2280, 1080, 2400))
+        icon.parentNode = cell
+        cell.parentNode = bar
+
+        val patch = expandedTabBounds(icon, screenWidth, screenHeight)
+        // Full bar height (down to the screen bottom), full cell width.
+        assertEquals(IntBounds(432, 2280, 648, 2400), patch)
+    }
+
+    @Test
+    fun expandedTabBoundsNeverExpandAboveTheBottomRegion() {
+        val icon = FakeNode(
+            contentDescription = "Reels",
+            isClickable = true,
+            bounds = IntBounds(528, 2330, 560, 2360)
+        )
+        val bar = FakeNode(viewId = "com.instagram.android:id/bottom_bar", bounds = IntBounds(0, 2280, 1080, 2400))
+        val fullScreen = FakeNode(viewId = "com.instagram.android:id/root", bounds = IntBounds(0, 0, 1080, 2400))
+        icon.parentNode = bar
+        bar.parentNode = fullScreen
+
+        val patch = expandedTabBounds(icon, screenWidth, screenHeight)
+        // The full-screen ancestor (top=0) must stop the walk: top stays at the bar's top and
+        // its full width must not leak into the patch.
+        assertEquals(IntBounds(528, 2280, 560, 2400), patch)
+    }
+
+    @Test
+    fun expandedTabBoundsSkipDegenerateAncestors() {
+        val icon = FakeNode(
+            contentDescription = "Reels",
+            isClickable = true,
+            bounds = IntBounds(528, 2330, 560, 2360)
+        )
+        val broken = FakeNode(viewId = "com.instagram.android:id/broken", bounds = IntBounds(0, 0, 0, 0))
+        val cell = FakeNode(viewId = "com.instagram.android:id/tab_cell", bounds = IntBounds(432, 2300, 648, 2392))
+        val bar = FakeNode(viewId = "com.instagram.android:id/bottom_bar", bounds = IntBounds(0, 2280, 1080, 2400))
+        icon.parentNode = broken
+        broken.parentNode = cell
+        cell.parentNode = bar
+
+        val patch = expandedTabBounds(icon, screenWidth, screenHeight)
+        // The empty-bounds ancestor is skipped, the cell widens us, the bar gives the height.
+        assertEquals(IntBounds(432, 2280, 648, 2400), patch)
     }
 }

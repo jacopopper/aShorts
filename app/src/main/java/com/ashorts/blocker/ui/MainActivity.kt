@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 HeroCard(
                     active = master && serviceOk && overlayOk && igInstalled,
@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                     SetupRow(
                         icon = Icons.Filled.Warning,
                         title = "Accessibility service is off",
-                        subtitle = "Required. aShorts only watches the Instagram app.",
+                        subtitle = "aShorts watches only Instagram.",
                         button = "Open settings"
                     ) {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -156,7 +156,7 @@ class MainActivity : ComponentActivity() {
                     SetupRow(
                         icon = Icons.Filled.Warning,
                         title = "Overlay permission is off",
-                        subtitle = "Required to cover the Reels tab and show the blocker.",
+                        subtitle = "Needed to cover the Reels UI.",
                         button = "Allow"
                     ) {
                         startActivity(
@@ -172,18 +172,17 @@ class MainActivity : ComponentActivity() {
                     SetupRow(
                         icon = Icons.Filled.Info,
                         title = "Instagram not found",
-                        subtitle = "aShorts is ready, but Instagram (com.instagram.android) " +
-                            "is not installed on this device.",
+                        subtitle = "aShorts starts working once Instagram is installed.",
                         button = "Recheck"
                     ) { refreshTick.intValue++ }
                 }
 
                 SwitchCard(
                     title = "Block Instagram Reels",
-                    subtitle = when {
-                        !serviceOk || !overlayOk -> "Finish setup above first."
-                        master -> "Active: the Reels tab is hidden and the feed is blocked."
-                        else -> "Paused: Reels work normally."
+                    subtitle = if (cooldownSec > 0) {
+                        "Strict mode: turning this off takes a countdown."
+                    } else {
+                        "Turning this off is instant."
                     },
                     checked = master
                 ) { on ->
@@ -246,7 +245,7 @@ class MainActivity : ComponentActivity() {
         Card(Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -263,9 +262,9 @@ class MainActivity : ComponentActivity() {
                     )
                     Text(
                         when {
-                            active -> "Reels blocked"
-                            !master -> "Protection paused"
-                            else -> "Setup needed"
+                            active -> "Blocking Reels"
+                            !master -> "Paused"
+                            else -> "Almost ready"
                         },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
@@ -273,14 +272,12 @@ class MainActivity : ComponentActivity() {
                 }
                 Text(
                     when {
-                        active -> "Everything is running. Open Instagram: the Reels tab is " +
-                            "covered and the Reels feed is blocked."
-                        !serviceOk -> "Enable the accessibility service and the overlay " +
-                            "permission to start protecting you."
-                        !overlayOk -> "One more permission: allow aShorts to draw over other apps."
-                        !igInstalled -> "aShorts is set up. It will kick in once Instagram is " +
-                            "installed."
-                        else -> "Everything checks out."
+                        active -> "The Reels tab is covered; if Reels opens anyway, " +
+                            "aShorts closes it for you."
+                        !serviceOk -> "Turn on the accessibility service to start."
+                        !overlayOk -> "Allow display over other apps to finish setup."
+                        !igInstalled -> "Install Instagram when ready — nothing to block yet."
+                        else -> "Switch blocking back on whenever you want."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -375,19 +372,19 @@ class MainActivity : ComponentActivity() {
                 )
                 OptionSwitch(
                     "Hide the Reels tab",
-                    "Covers the Reels button in Instagram's bottom bar.",
+                    "Covers the Reels button in Instagram's bar.",
                     hideTab,
                     onHideTab
                 )
                 OptionSwitch(
-                    "Full-screen blocker",
-                    "Covers the Reels feed when it opens from links, DMs or search.",
+                    "Fallback cover",
+                    "Shown only if leaving Reels automatically fails.",
                     useBlocker,
                     onBlocker
                 )
                 OptionSwitch(
-                    "Aggressive matching (beta)",
-                    "Also blocks screens whose labels mention Reels. May over-block.",
+                    "Aggressive matching",
+                    "Backup label matching for Instagram updates. May over-block.",
                     aggressive,
                     onAggressive
                 )
@@ -433,7 +430,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Wait before disabling", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "Strict mode: turning blocking off requires sitting through a countdown.",
+                    "How long turning blocking off takes.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -468,24 +465,11 @@ class MainActivity : ComponentActivity() {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "aShorts uses Android's accessibility API to recognize Instagram's Reels UI " +
-                        "and draws an overlay on top of it. No root, no modification of " +
-                        "Instagram, and no network access — the app has no internet permission " +
-                        "and cannot send data anywhere.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "Battery: the service inspects the screen only while Instagram is visible, " +
-                        "with throttled and size-capped scans. While Instagram is closed it does " +
-                        "nothing.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "If an Instagram update ever breaks blocking, open the Detection log: it " +
-                        "records exactly what aShorts matched, so the rules can be updated in " +
-                        "minutes.",
+                    "aShorts reads Instagram's on-screen layout through Android's accessibility " +
+                        "API and covers the Reels UI with overlays. It scans only while Instagram " +
+                        "is visible, keeps everything on this device, and holds no internet " +
+                        "permission. If an Instagram update ever breaks blocking, the Detection " +
+                        "log shows exactly what to fix.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

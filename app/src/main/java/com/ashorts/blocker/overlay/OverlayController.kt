@@ -9,7 +9,6 @@ import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -19,14 +18,13 @@ import com.ashorts.blocker.engine.IntBounds
 /**
  * Draws the two overlays over Instagram:
  *
- *  1. a small opaque patch exactly on top of the Reels tab in the bottom bar — the tab becomes
- *     invisible and untappable because the overlay window also swallows touches inside its bounds;
- *  2. a full-screen blocker shown when the Reels feed itself is on screen (opened from a DM,
- *     a link, or anywhere else), with a single obvious way out.
+ *  1. a patch exactly on top of the Reels tab cell in the bottom bar — invisible (it matches the
+ *     bar color) and untappable, because the overlay window swallows touches inside its bounds;
+ *  2. a minimal full-screen cover, used only as a fallback when aShorts' automatic back-press
+ *     fails to leave the Reels feed (deep links, stubborn back stacks).
  *
- * All windows are TYPE_APPLICATION_OVERLAY (requires the "display over other apps" permission),
- * are non-focusable so the system back gesture still reaches the app behind, and are removed the
- * moment Instagram is no longer visible.
+ * All windows are TYPE_APPLICATION_OVERLAY (needs the "display over other apps" permission) and
+ * are non-focusable so the system back gesture still reaches the app behind them.
  */
 class OverlayController(private val context: Context) {
 
@@ -53,9 +51,10 @@ class OverlayController(private val context: Context) {
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
-    // ---------------------------------------------------------------- full-screen blocker
+    // ---------------------------------------------------------------- fallback blocker
 
-    fun showBlocker(onLeave: () -> Unit, onHome: () -> Unit, onOpenApp: () -> Unit) {
+    /** Minimal cover: one mark, one line, one way out. */
+    fun showBlocker(onLeave: () -> Unit) {
         if (!canDraw() || isBlockerShowing) return
 
         val night = isNight()
@@ -64,16 +63,18 @@ class OverlayController(private val context: Context) {
         val textSecondary = if (night) 0xFF9AA3AD.toInt() else 0xFF5A6472.toInt()
         val accent = 0xFF2E7D5B.toInt()
 
-        fun lineParams(topMarginDp: Int) =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                .apply { topMargin = topMarginDp.dp() }
+        fun params(topMarginDp: Int) =
+            LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = topMarginDp.dp(); gravity = Gravity.CENTER_HORIZONTAL }
 
         fun text(
             sizeSp: Float,
             value: String,
             color: Int,
             bold: Boolean = false,
-            underline: Boolean = false,
+            letterSpacing: Float = 0f,
             params: LinearLayout.LayoutParams
         ): TextView = TextView(context).apply {
             text = value
@@ -81,41 +82,34 @@ class OverlayController(private val context: Context) {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
             gravity = Gravity.CENTER
             if (bold) paint.isFakeBoldText = true
-            if (underline) paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            if (letterSpacing != 0f) this.letterSpacing = letterSpacing
             layoutParams = params
         }
 
         val leave = Button(context).apply {
-            text = "Leave Reels"
+            text = "Leave"
             setTextColor(Color.WHITE)
             transformationMethod = null
-            background = GradientDrawable().apply { setColor(accent); cornerRadius = 14f * density }
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            minWidth = 220.dp()
+            setMinHeight(52.dp())
+            background = GradientDrawable().apply {
+                setColor(accent)
+                cornerRadius = 26f * density
+            }
             setOnClickListener { onLeave() }
-            layoutParams = lineParams(28)
+            layoutParams = params(40)
         }
-
-        val home = Button(context).apply {
-            text = "Go to Home screen"
-            setTextColor(textSecondary)
-            transformationMethod = null
-            background = null
-            setOnClickListener { onHome() }
-            layoutParams = lineParams(4)
-        }
-
-        val openApp = text(14f, "Open aShorts settings", accent, underline = true, params = lineParams(24))
-        openApp.setOnClickListener { onOpenApp() }
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(32.dp(), 32.dp(), 32.dp(), 32.dp())
             setBackgroundColor(bg)
-            addView(text(26f, "Reels are blocked", textPrimary, bold = true, params = lineParams(0)))
-            addView(text(15f, "aShorts is keeping you out of the endless scroll.", textSecondary, params = lineParams(8)))
+            addView(text(12f, "ASHORTS", textSecondary, bold = true, letterSpacing = 0.25f, params = params(0)))
+            addView(text(28f, "Reels is blocked", textPrimary, bold = true, params = params(10)))
+            addView(text(15f, "The scroll ends here.", textSecondary, params = params(8)))
             addView(leave)
-            addView(home)
-            addView(openApp)
         }
 
         val lp = WindowManager.LayoutParams(

@@ -6,8 +6,9 @@ import com.ashorts.blocker.engine.IntBounds
 import com.ashorts.blocker.engine.NodeHandle
 
 /**
- * Wraps an [AccessibilityNodeInfo] into the engine's [NodeHandle]. Children are fetched lazily
- * (each getChild is a binder call into the target app), and bounds are only read on first use.
+ * Wraps an [AccessibilityNodeInfo] into the engine's [NodeHandle]. Children and parents are
+ * fetched lazily (each fetch is a binder call into the target app), and bounds are only read
+ * on first use.
  */
 class AccessibilityNodeHandle(
     private val node: AccessibilityNodeInfo,
@@ -28,4 +29,7 @@ class AccessibilityNodeHandle(
 
     override fun childAt(index: Int): NodeHandle? =
         node.getChild(index)?.let { AccessibilityNodeHandle(it, depth + 1) }
+
+    override fun parent(): NodeHandle? =
+        node.parent?.let { AccessibilityNodeHandle(it, depth - 1) }
 }

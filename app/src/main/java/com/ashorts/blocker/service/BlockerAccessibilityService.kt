@@ -9,23 +9,30 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.ashorts.blocker.engine.DetectionEngine
 import com.ashorts.blocker.engine.InstagramRules
+import com.ashorts.blocker.engine.expandedTabBounds
 import com.ashorts.blocker.log.DetectionLog
 import com.ashorts.blocker.overlay.OverlayController
 import com.ashorts.blocker.prefs.Prefs
-import com.ashorts.blocker.ui.MainActivity
 
 /**
  * The always-on part of aShorts. The system delivers accessibility events here; we look at them
  * only when Instagram is on screen:
  *
- *  - no scan runs at all while any other app is in the foreground (and no events are delivered
- *    for our own overlays), so the idle cost is effectively zero;
- *  - scans are throttled (240 ms normally, 700 ms while the blocker is up) and capped in size;
- *  - when the Reels tab is visible in Instagram's bottom bar, a patch overlay covers it;
- *  - when the Reels feed itself is visible (deep link, DM, explore, ...), a full-screen blocker
- *    covers everything until the user leaves.
+ *  - no scan runs at all while any other app is in the foreground (and events from our own
+ *    overlays are ignored), so the idle cost is effectively zero;
+ *  - scans are throttled (240 ms normally, 700 ms while the fallback cover is up) and capped
+ *    in size, keeping the battery/memory footprint minimal;
+ *  - when the Reels tab is visible in Instagram's bottom bar, an invisible patch covers it;
+ *  - when the Reels feed itself appears (deep link, DM, search...), aShorts presses Back
+ *    immediately: the feed closes and its audio stops. Only if that fails does the minimal
+ *    cover show up, with a single Leave button.
  */
 class BlockerAccessibilityService : AccessibilityService() {
+
+    companion object {
+        /** How long to wait for the automatic back-press to land before showing the cover. */
+        private const val AUTO_LEAVE_GRACE_MS = 1200L
+    }
 
     private lateinit var overlay: OverlayController
     private lateinit var engine: DetectionEngine
@@ -37,7 +44,8 @@ class BlockerAccessibilityService : AccessibilityService() {
     private var aggressive: Boolean = Prefs.DEFAULT_AGGRESSIVE
 
     private var lastScanAt = 0L
-    private var cleanScans = 0
+    private var autoLeaveAt = 0L
+    private var reelsVisible = false
     private var overlaysHiddenForOff = false
 
     private val prefListener =
@@ -99,13 +107,12 @@ class BlockerAccessibilityService : AccessibilityService() {
             if (!overlaysHiddenForOff) {
                 overlay.hideAll()
                 overlaysHiddenForOff = true
+                reelsVisible = false
             }
             return
         }
         overlaysHiddenForOff = false
 
-        // Throttle. While the blocker is up we relax the rate: we only need to notice when the
-        // user leaves Reels on their own (system back gesture or leaving the app).
         val throttleMs = if (overlay.isBlockerShowing) 700L else 240L
         val now = SystemClock.elapsedRealtime()
         if (now - lastScanAt < throttleMs) return
@@ -123,12 +130,11 @@ class BlockerAccessibilityService : AccessibilityService() {
         }
         if (root == null) {
             // Instagram is not visible; make sure nothing of ours is left on screen.
-            if (overlay.isBlockerShowing || overlay.isPatchShowing) {
-                overlay.hideAll()
-                cleanScans = 0
-            }
+            if (overlay.isBlockerShowing || overlay.isPatchShowing) overlay.hideAll()
+            reelsVisible = false
             return
         }
+
         val metrics = resources.displayMetrics
         val result = engine.scan(
             AccessibilityNodeHandle(root, 0),
@@ -136,36 +142,33 @@ class BlockerAccessibilityService : AccessibilityService() {
             metrics.heightPixels
         )
 
-        if (result.reelsScreenDetected && useBlocker) {
-            cleanScans = 0
+        if (result.reelsScreenDetected) {
             DetectionLog.add(result.matched, screenDetected = true)
-            overlay.showBlocker(
-                onLeave = {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    lastScanAt = 0 // rescan immediately; blocker returns if we are still in Reels
-                },
-                onHome = {
-                    overlay.hideBlocker()
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                },
-                onOpenApp = {
-                    overlay.hideBlocker()
-                    startActivity(
-                        Intent(this, MainActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }
-            )
             overlay.hidePatch()
-        } else {
-            // Two consecutive clean scans before removing the blocker, to avoid flicker.
-            if (overlay.isBlockerShowing && ++cleanScans >= 2) {
-                overlay.hideBlocker()
+            if (!reelsVisible) {
+                // Just entered Reels: leave instantly. This also stops the audio, and it lands
+                // the user back wherever they came from — usually invisible and silent.
+                reelsVisible = true
+                autoLeaveAt = now
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                lastScanAt = 0 // re-check immediately so the cover appears if we are still there
+            } else if (useBlocker && now - autoLeaveAt > AUTO_LEAVE_GRACE_MS) {
+                // The automatic back did not get us out (deep link, stubborn back stack).
+                overlay.showBlocker(onLeave = {
+                    overlay.hideBlocker()
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    lastScanAt = 0
+                })
             }
-            val tab = result.reelsTabBounds
-            if (hideTab && !overlay.isBlockerShowing && tab != null) {
+        } else {
+            // Not on Reels. Drop the cover at the first clean scan — no lingering over the feed.
+            reelsVisible = false
+            if (overlay.isBlockerShowing) overlay.hideBlocker()
+
+            val tab = result.reelsTab
+            if (hideTab && tab != null) {
                 DetectionLog.add(result.matched, screenDetected = false)
-                overlay.showPatch(tab)
+                overlay.showPatch(expandedTabBounds(tab, metrics.widthPixels, metrics.heightPixels))
             } else {
                 overlay.hidePatch()
             }
