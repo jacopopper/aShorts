@@ -18,6 +18,9 @@ interface NodeHandle {
     /** False when the node is in the tree but not actually shown to the user. */
     val isVisibleToUser: Boolean
 
+    /** The active tab in a tab bar reports itself as selected (when the app exposes it). */
+    val isSelected: Boolean get() = false
+
     /** Bounding box in screen coordinates. */
     val bounds: IntBounds
 
@@ -26,4 +29,7 @@ interface NodeHandle {
     val childCount: Int
     fun childAt(index: Int): NodeHandle?
     fun parent(): NodeHandle?
+
+    /** Taps the node (or its nearest clickable ancestor). Returns false if that failed. */
+    fun click(): Boolean = false
 }

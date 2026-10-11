@@ -5,7 +5,7 @@
 An Android app that blocks **Instagram Reels**. No root, no Instagram modification, and no
 network access — the app holds no internet permission and cannot send data anywhere.
 
-**Status:** v0.2.0 — Instagram Reels only. X (Twitter) videos and YouTube Shorts are planned;
+**Status:** v0.12.0 — Instagram Reels only. X (Twitter) videos and YouTube Shorts are planned;
 the detection engine is app-agnostic, so each new target is mostly a new rules file.
 
 ## What it does
@@ -15,7 +15,9 @@ the detection engine is app-agnostic, so each new target is mostly a new rules f
   and swallows any taps.
 - **Leaves Reels instantly** — if the Reels feed opens anyway (from a DM, a link, search, or a
   profile), aShorts presses Back for you the moment it appears. The feed closes and its audio
-  stops; you land back wherever you came from.
+  stops; you land back wherever you came from. If Reels was opened from its own tab (only
+  possible in the instant before the patch appears), aShorts taps Home instead, because Back on
+  Instagram's Home tab would close the app.
 - **Minimal fallback cover** — only if the automatic Back fails (deep links, stubborn back
   stacks) does a calm full-screen cover appear with a single button: *Leave*. No menus, no
   extra buttons.
@@ -65,10 +67,13 @@ To uninstall: turn the accessibility service off first, then uninstall normally.
 
 | Setting | Meaning |
 | --- | --- |
-| Block Instagram Reels | Master switch. Turning it **off** triggers the strict countdown. |
-| Hide the Reels tab | The patch over the bottom-bar button. Its color follows the phone's dark/light mode. |
-| Fallback cover | The minimal one-button cover, shown only if up to three automatic Backs fail to leave Reels. |
-| Wait before disabling | The strict-mode countdown length (off / 30 s / 1 min / 2 min / 5 min). |
+| Block Instagram Reels | Master switch: on hides the Reels tab and blocks every Reels screen; off leaves Instagram untouched. Turning it **off** triggers the strict countdown. |
+| Wait before disabling | The countdown length (30 s / 1 min / 2 min / 5 min). |
+
+There are deliberately no partial modes: a visible but blocked Reels tab only invites taps that
+bounce you out, and switching the fallback cover off would be a way around the countdown. The
+patch takes its color from Instagram's own bar, so it matches Instagram's theme even when it
+differs from the phone's.
 
 ## Troubleshooting
 

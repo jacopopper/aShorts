@@ -41,7 +41,8 @@ fun AccessibilityDisclosureDialog(onAgree: () -> Unit, onDecline: () -> Unit) {
                 )
                 Section(
                     "What it does",
-                    "Covers the Reels tab and presses Back for you when Reels opens."
+                    "Covers the Reels tab and closes Reels for you when it opens, by pressing " +
+                        "Back or tapping Instagram's Home tab."
                 )
                 Section(
                     "What it never does",

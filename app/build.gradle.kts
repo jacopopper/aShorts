@@ -20,8 +20,8 @@ android {
         applicationId = "com.ashorts.blocker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 12
+        versionName = "0.12.0"
 
         // Release builds watch Instagram only. Debug builds additionally watch the local
         // test harness app so the emulator E2E suite can exercise the whole pipeline.

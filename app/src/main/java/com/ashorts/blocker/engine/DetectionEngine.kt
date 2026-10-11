@@ -21,22 +21,46 @@ import kotlin.math.min
 class DetectionEngine(private val rules: AppBlockRules) {
 
     data class ScanResult(
-        /** True when the full-screen Reels feed itself is visible. */
+        /** True when the full-screen Reels feed itself is in the window tree. */
         val reelsScreenDetected: Boolean,
         /** The matched Reels tab node (null if not present). Use [expandedTabBounds] for patch bounds. */
         val reelsTab: NodeHandle?,
         /** Human-readable list of what matched, used by the detection log. */
-        val matched: List<String>
+        val matched: List<String>,
+        /**
+         * False when every matched Reels node is in the tree but hidden: a Reels screen the app
+         * keeps loaded behind another tab.
+         */
+        val reelsScreenVisible: Boolean = reelsScreenDetected,
+        /** The bottom-bar Home tab, used to leave a Reels screen that has no screen behind it. */
+        val homeTab: NodeHandle? = null
     )
+
+    /** True for a node that sits in the bottom bar and looks like the Reels tab. */
+    fun isReelsTab(node: NodeHandle, screenWidth: Int, screenHeight: Int): Boolean =
+        isBarTab(node, screenWidth, screenHeight) &&
+            matches(node, rules.tabIdPatterns, rules.tabDescKeywords)
+
+    private fun isBarTab(node: NodeHandle, screenWidth: Int, screenHeight: Int): Boolean =
+        node.isClickable && node.isVisibleToUser &&
+            !node.bounds.isEmpty &&
+            node.bounds.top >= (screenHeight * rules.tabRegionTopFraction).toInt() &&
+            node.bounds.height <= (screenHeight * rules.tabMaxHeightFraction).toInt() &&
+            node.bounds.width <= (screenWidth * rules.tabMaxWidthFraction).toInt()
+
+    private fun matches(node: NodeHandle, ids: List<Regex>, keywords: List<String>): Boolean {
+        val id = node.viewId
+        if (id != null && ids.any { it.containsMatchIn(id) }) return true
+        val label = node.contentDescription?.toString() ?: node.text?.toString() ?: return false
+        return keywords.any { label.contains(it, ignoreCase = true) }
+    }
 
     fun scan(root: NodeHandle, screenWidth: Int, screenHeight: Int): ScanResult {
         val matched = mutableListOf<String>()
         var screenHit = false
+        var screenVisible = false
         var tabNode: NodeHandle? = null
-
-        val minTabTop = (screenHeight * rules.tabRegionTopFraction).toInt()
-        val maxTabHeight = (screenHeight * rules.tabMaxHeightFraction).toInt()
-        val maxTabWidth = (screenWidth * rules.tabMaxWidthFraction).toInt()
+        var homeNode: NodeHandle? = null
 
         val queue = ArrayDeque<NodeHandle>()
         queue.add(root)
@@ -49,35 +73,35 @@ class DetectionEngine(private val rules: AppBlockRules) {
             val id = node.viewId
             val desc = node.contentDescription?.toString()
 
-            if (!screenHit) {
-                if (id != null && rules.screenIdPatterns.any { it.containsMatchIn(id) }) {
+            if (!screenVisible) {
+                val hit = when {
+                    id != null && rules.screenIdPatterns.any { it.containsMatchIn(id) } -> "id=$id"
+                    desc != null &&
+                        rules.screenDescKeywords.any { desc.contains(it, ignoreCase = true) } ->
+                        "desc=\"$desc\""
+                    else -> null
+                }
+                if (hit != null) {
+                    val visible = node.isVisibleToUser
+                    if (!screenHit || visible) matched += "screen $hit visible=$visible"
                     screenHit = true
-                    matched += "screen id=$id"
-                } else if (desc != null &&
-                    rules.screenDescKeywords.any { desc.contains(it, ignoreCase = true) }
-                ) {
-                    screenHit = true
-                    matched += "screen desc=\"$desc\""
+                    screenVisible = visible
                 }
             }
 
-            if (tabNode == null && node.isClickable && node.isVisibleToUser &&
-                !node.bounds.isEmpty &&
-                node.bounds.top >= minTabTop &&
-                node.bounds.height <= maxTabHeight &&
-                node.bounds.width <= maxTabWidth
-            ) {
-                val idHit = id != null && rules.tabIdPatterns.any { it.containsMatchIn(id) }
+            if ((tabNode == null || homeNode == null) && isBarTab(node, screenWidth, screenHeight)) {
                 val label = desc ?: node.text?.toString()
-                val labelHit =
-                    label != null && rules.tabDescKeywords.any { label.contains(it, ignoreCase = true) }
-                if (idHit || labelHit) {
+                if (tabNode == null && matches(node, rules.tabIdPatterns, rules.tabDescKeywords)) {
                     tabNode = node
-                    matched += "tab id=$id desc=\"$label\" bounds=${node.bounds}"
+                    matched += "tab id=$id desc=\"$label\" bounds=${node.bounds} selected=${node.isSelected}"
+                } else if (homeNode == null &&
+                    matches(node, rules.homeTabIdPatterns, rules.homeTabDescKeywords)
+                ) {
+                    homeNode = node
                 }
             }
 
-            if (screenHit && tabNode != null) break
+            if (screenVisible && tabNode != null && homeNode != null) break
 
             if (node.depth < rules.maxDepth) {
                 val children = minOf(node.childCount, rules.maxChildrenPerNode)
@@ -87,7 +111,13 @@ class DetectionEngine(private val rules: AppBlockRules) {
             }
         }
 
-        return ScanResult(screenHit, tabNode, matched)
+        if (screenHit) {
+            homeNode?.let {
+                matched += "home id=${it.viewId} desc=\"${it.contentDescription ?: it.text}\" " +
+                    "selected=${it.isSelected}"
+            }
+        }
+        return ScanResult(screenHit, tabNode, matched, screenVisible, homeNode)
     }
 }
 

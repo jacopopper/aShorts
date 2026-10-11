@@ -20,6 +20,7 @@ class AccessibilityNodeHandle(
     override val contentDescription: CharSequence? get() = node.contentDescription
     override val isClickable: Boolean get() = node.isClickable
     override val isVisibleToUser: Boolean get() = node.isVisibleToUser
+    override val isSelected: Boolean get() = node.isSelected
     override val childCount: Int get() = node.childCount
 
     override val bounds: IntBounds by lazy {
@@ -33,4 +34,14 @@ class AccessibilityNodeHandle(
 
     override fun parent(): NodeHandle? =
         node.parent?.let { AccessibilityNodeHandle(it, depth - 1) }
+
+    override fun click(): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        repeat(4) {
+            val n = current ?: return false
+            if (n.isClickable) return n.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            current = n.parent
+        }
+        return false
+    }
 }

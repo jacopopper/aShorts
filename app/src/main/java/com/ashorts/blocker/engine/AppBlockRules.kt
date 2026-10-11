@@ -20,6 +20,10 @@ data class AppBlockRules(
     /** Content-description/text keywords that identify the nav-bar tab ("Reels"). */
     val tabDescKeywords: List<String>,
 
+    /** The nav-bar tab to switch to when the feed was opened from its own tab. */
+    val homeTabIdPatterns: List<Regex> = emptyList(),
+    val homeTabDescKeywords: List<String> = emptyList(),
+
     val tabRegionTopFraction: Float = 0.72f,
     val tabMaxHeightFraction: Float = 0.14f,
     val tabMaxWidthFraction: Float = 0.30f,

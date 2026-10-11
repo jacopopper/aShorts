@@ -37,6 +37,10 @@ object InstagramRules {
 
     private val TAB_DESC_KEYWORDS = listOf("reels")
 
+    /** Not yet confirmed on-device; the detection log prints the matched Home tab. */
+    private val HOME_TAB_ID_SUBSTRINGS = listOf("feed_tab", "tab_home")
+    private val HOME_TAB_DESC_KEYWORDS = listOf("home")
+
     fun rules(aggressiveTextMatch: Boolean): AppBlockRules = AppBlockRules(
         appPackage = PACKAGE,
         screenIdPatterns = SCREEN_ID_SUBSTRINGS.map { Regex(Regex.escape(it)) },
@@ -44,6 +48,8 @@ object InstagramRules {
         // Use only when id-based detection stops matching; may over-block (e.g. in DMs).
         screenDescKeywords = if (aggressiveTextMatch) listOf("reels") else emptyList(),
         tabIdPatterns = TAB_ID_SUBSTRINGS.map { Regex(Regex.escape(it)) },
-        tabDescKeywords = TAB_DESC_KEYWORDS
+        tabDescKeywords = TAB_DESC_KEYWORDS,
+        homeTabIdPatterns = HOME_TAB_ID_SUBSTRINGS.map { Regex(Regex.escape(it)) },
+        homeTabDescKeywords = HOME_TAB_DESC_KEYWORDS
     )
 }

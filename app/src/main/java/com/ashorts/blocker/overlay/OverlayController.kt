@@ -2,10 +2,10 @@ package com.ashorts.blocker.overlay
 
 import android.content.Context
 import android.content.res.Configuration
-import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
@@ -14,8 +14,8 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.ashorts.blocker.engine.InstagramRules
 import com.ashorts.blocker.engine.IntBounds
+import com.ashorts.blocker.engine.PatchColorMath
 import com.ashorts.blocker.log.DetectionLog
 
 /**
@@ -33,6 +33,7 @@ class OverlayController(private val context: Context) {
 
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val density = context.resources.displayMetrics.density
+    private val theme = OverlayTheme(context.applicationContext.resources.configuration.uiMode)
 
     var isBlockerShowing = false
         private set
@@ -51,12 +52,6 @@ class OverlayController(private val context: Context) {
 
     private fun canDraw(): Boolean = Settings.canDrawOverlays(context)
 
-    // The system-wide configuration, not this service's own resources: a long-lived
-    // AccessibilityService can keep a stale uiMode (the patch stayed dark in light mode).
-    private fun isNight(): Boolean =
-        (Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-
     private fun overlayFlags(): Int =
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -69,7 +64,8 @@ class OverlayController(private val context: Context) {
     fun showBlocker(onLeave: () -> Unit) {
         if (!canDraw() || isBlockerShowing) return
 
-        val night = isNight()
+        // Match Instagram's theme, which can differ from the system one.
+        val night = sampledColor?.let { PatchColorMath.isDark(it) } ?: theme.isNight
         val bg = if (night) 0xFF0B0E12.toInt() else 0xFFFAFAF8.toInt()
         val textPrimary = if (night) 0xFFE7EAEE.toInt() else 0xFF191C21.toInt()
         val textSecondary = if (night) 0xFF9AA3AD.toInt() else 0xFF5A6472.toInt()
@@ -117,6 +113,7 @@ class OverlayController(private val context: Context) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(32.dp(), 32.dp(), 32.dp(), 32.dp())
+            disableForceDark()
             setBackgroundColor(bg)
             addView(text(12f, "ASHORTS", textSecondary, bold = true, letterSpacing = 0.25f, params = params(0)))
             addView(text(28f, "Reels is blocked", textPrimary, bold = true, params = params(10)))
@@ -149,8 +146,9 @@ class OverlayController(private val context: Context) {
 
     // ---------------------------------------------------------------- Reels tab patch
 
-    fun showPatch(bounds: IntBounds) {
-        if (!canDraw()) return
+    /** Returns true when the patch was created or moved (its surroundings may have changed). */
+    fun showPatch(bounds: IntBounds): Boolean {
+        if (!canDraw()) return false
         // Apply the calibration learned so far; skip no-op updates so a static bar does not
         // churn the window manager every scan.
         val target = IntBounds(
@@ -160,7 +158,7 @@ class OverlayController(private val context: Context) {
             bounds.bottom + offsetY
         )
         refreshPatchColor()
-        if (target == lastApplied && patchView != null) return
+        if (target == lastApplied && patchView != null) return false
         lastApplied = target
 
         val view = patchView
@@ -172,12 +170,32 @@ class OverlayController(private val context: Context) {
                 isPatchShowing = true
             } catch (_: Exception) {
                 // Ignore; will retry on the next scan.
-                return
+                return false
             }
         } else {
             runCatching { wm.updateViewLayout(view, patchParams(target)) }
         }
         scheduleCalibration()
+        return true
+    }
+
+    private val state = context.getSharedPreferences(STATE_FILE, Context.MODE_PRIVATE)
+
+    /**
+     * Last color read from Instagram's bar. It always wins over the system theme, because
+     * Instagram has its own theme setting (system dark + Instagram light is common). It is kept
+     * across theme switches and restarts, so a new patch starts in the right color.
+     */
+    private var sampledColor: Int? =
+        state.getInt(KEY_BAR_COLOR, 0).takeIf { (it ushr 24) == 0xFF }
+
+    /** Returns true if the visible patch changed color. */
+    fun setSampledColor(color: Int): Boolean {
+        if (color != sampledColor) {
+            sampledColor = color
+            state.edit().putInt(KEY_BAR_COLOR, color).apply()
+        }
+        return refreshPatchColor()
     }
 
     fun hidePatch() {
@@ -193,7 +211,13 @@ class OverlayController(private val context: Context) {
         hidePatch()
     }
 
-    /** Rotation/theme changes invalidate placement; forget the learned offsets. */
+    /** Only matters until the first bar color has been read. */
+    fun onConfigurationChanged(configuration: Configuration) {
+        theme.update(configuration.uiMode)
+        refreshPatchColor()
+    }
+
+    /** Rotation/display changes invalidate placement; forget the learned offsets. */
     fun resetCalibration() {
         offsetX = 0
         offsetY = 0
@@ -262,26 +286,39 @@ class OverlayController(private val context: Context) {
 
     private var appliedPatchColor = 0
 
-    /** Instagram follows the system theme by default, so the system night mode picks the shade. */
-    private fun patchColor(): Int =
-        if (isNight()) InstagramRules.BAR_COLOR_DARK else InstagramRules.BAR_COLOR_LIGHT
+    private fun currentPatchColor(): Int = sampledColor ?: theme.patchColor
 
-    /** Cheap per-scan check so a dark/light switch recolors the patch without waiting. */
-    private fun refreshPatchColor() {
-        val view = patchView ?: return
-        val color = patchColor()
-        if (color != appliedPatchColor) {
-            view.setBackgroundColor(color)
-            appliedPatchColor = color
-        }
+    private fun refreshPatchColor(): Boolean {
+        val view = patchView ?: return false
+        val color = currentPatchColor()
+        if (color == appliedPatchColor) return false
+        view.setBackgroundColor(color)
+        appliedPatchColor = color
+        return true
     }
 
     /**
      * Opaque rectangle in Instagram's bar color, so it blends into the bar. Touches inside its
      * bounds land on this window instead of the Reels tab underneath.
      */
-    private fun createPatchView(): View = View(context).apply {
-        appliedPatchColor = patchColor()
+    private fun createPatchView(): View = object : View(context) {
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            super.onConfigurationChanged(newConfig)
+            this@OverlayController.onConfigurationChanged(newConfig)
+        }
+    }.apply {
+        disableForceDark()
+        appliedPatchColor = currentPatchColor()
         setBackgroundColor(appliedPatchColor)
+    }
+
+    /** OEM and Android "dark mode for all apps" options would otherwise repaint our colors. */
+    private fun View.disableForceDark() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isForceDarkAllowed = false
+    }
+
+    private companion object {
+        const val STATE_FILE = "overlay_state"
+        const val KEY_BAR_COLOR = "bar_color"
     }
 }

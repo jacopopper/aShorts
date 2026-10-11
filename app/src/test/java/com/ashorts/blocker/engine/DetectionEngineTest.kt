@@ -238,6 +238,64 @@ class DetectionEngineTest {
         // With maxNodes=5 (root, tab bar, reels tab, second branch, deepReelsId) everything fits.
     }
 
+    @Test
+    fun findsTheHomeTabNextToTheReelsTab() {
+        val root = FakeNode(
+            children = listOf(
+                FakeNode(
+                    viewId = "com.instagram.android:id/clips_viewer_debug_container",
+                    depth = 1
+                ),
+                FakeNode(depth = 1, children = listOf(homeTab, reelsTab))
+            )
+        )
+        val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
+        assertEquals(homeTab, result.homeTab)
+        assertEquals(reelsTab, result.reelsTab)
+        assertTrue(result.matched.any { it.startsWith("home ") })
+    }
+
+    @Test
+    fun hiddenReelsScreenIsDetectedButNotVisible() {
+        val root = FakeNode(
+            children = listOf(
+                FakeNode(
+                    viewId = "com.instagram.android:id/clips_viewer_debug_container",
+                    isVisibleToUser = false,
+                    depth = 1
+                )
+            )
+        )
+        val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
+        assertTrue(result.reelsScreenDetected)
+        assertFalse(result.reelsScreenVisible)
+    }
+
+    @Test
+    fun aVisibleReelsNodeWinsOverAHiddenOne() {
+        val root = FakeNode(
+            children = listOf(
+                FakeNode(viewId = "com.instagram.android:id/clips_viewer_debug_container", isVisibleToUser = false, depth = 1),
+                FakeNode(viewId = "com.instagram.android:id/clips_pager", depth = 1)
+            )
+        )
+        val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
+        assertTrue(result.reelsScreenVisible)
+    }
+
+    @Test
+    fun recognizesATappedReelsTabButNotOtherTabs() {
+        val engine = DetectionEngine(rules)
+        assertTrue(engine.isReelsTab(reelsTab, screenWidth, screenHeight))
+        assertFalse(engine.isReelsTab(homeTab, screenWidth, screenHeight))
+        val reelsLinkInFeed = FakeNode(
+            contentDescription = "Reels",
+            isClickable = true,
+            bounds = IntBounds(0, 600, 200, 700)
+        )
+        assertFalse(engine.isReelsTab(reelsLinkInFeed, screenWidth, screenHeight))
+    }
+
     // ----------------------------------------------------------- patch bounds expansion
 
     @Test

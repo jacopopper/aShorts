@@ -94,19 +94,18 @@ class MainActivity : ComponentActivity() {
         var master by remember(tick) {
             mutableStateOf(prefs.getBoolean(Prefs.KEY_MASTER, Prefs.DEFAULT_MASTER))
         }
-        var hideTab by remember(tick) {
-            mutableStateOf(prefs.getBoolean(Prefs.KEY_HIDE_TAB, Prefs.DEFAULT_HIDE_TAB))
-        }
-        var useBlocker by remember(tick) {
-            mutableStateOf(prefs.getBoolean(Prefs.KEY_BLOCKER, Prefs.DEFAULT_BLOCKER))
-        }
         var cooldownSec by remember(tick) {
-            mutableIntStateOf(prefs.getInt(Prefs.KEY_COOLDOWN_SECONDS, Prefs.DEFAULT_COOLDOWN))
+            mutableIntStateOf(
+                Prefs.normalizeCooldown(
+                    prefs.getInt(Prefs.KEY_COOLDOWN_SECONDS, Prefs.DEFAULT_COOLDOWN)
+                )
+            )
         }
 
         val serviceOk = remember(tick) { AppStatus.isServiceEnabled(ctx) }
         val overlayOk = remember(tick) { AppStatus.isOverlayGranted(ctx) }
         val igInstalled = remember(tick) { AppStatus.isInstagramInstalled(ctx) }
+        val captureMissing = remember(tick) { prefs.getBoolean(Prefs.KEY_CAPTURE_MISSING, false) }
 
         fun putBoolean(key: String, value: Boolean) {
             prefs.edit().putBoolean(key, value).apply()
@@ -159,6 +158,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (serviceOk && captureMissing) {
+                    SetupRow(
+                        icon = Icons.Filled.Warning,
+                        title = "Finish the update",
+                        subtitle = "Turn aShorts off and on in Accessibility settings so the " +
+                            "cover matches Instagram's colors.",
+                        button = "Open"
+                    ) {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                }
+
                 if (!overlayOk) {
                     SetupRow(
                         icon = Icons.Filled.Warning,
@@ -186,21 +197,13 @@ class MainActivity : ComponentActivity() {
 
                 SwitchCard(
                     title = "Block Instagram Reels",
-                    subtitle = if (cooldownSec > 0) {
-                        "Strict mode: turning this off takes a countdown."
-                    } else {
-                        "Turning this off is instant."
-                    },
                     checked = master
                 ) { on ->
                     if (on) {
                         putBoolean(Prefs.KEY_MASTER, true)
                         master = true
-                    } else if (cooldownSec > 0) {
-                        pendingDisable = true
                     } else {
-                        putBoolean(Prefs.KEY_MASTER, false)
-                        master = false
+                        pendingDisable = true
                     }
                 }
 
@@ -217,11 +220,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 OptionsCard(
-                    hideTab = hideTab,
-                    useBlocker = useBlocker,
                     cooldownSec = cooldownSec,
-                    onHideTab = { hideTab = it; putBoolean(Prefs.KEY_HIDE_TAB, it) },
-                    onBlocker = { useBlocker = it; putBoolean(Prefs.KEY_BLOCKER, it) },
                     onCooldown = {
                         cooldownSec = it
                         prefs.edit().putInt(Prefs.KEY_COOLDOWN_SECONDS, it).apply()
@@ -328,7 +327,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun SwitchCard(
         title: String,
-        subtitle: String,
         checked: Boolean,
         onCheckedChange: (Boolean) -> Unit
     ) {
@@ -337,18 +335,12 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Switch(checked = checked, onCheckedChange = onCheckedChange)
             }
         }
@@ -356,11 +348,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun OptionsCard(
-        hideTab: Boolean,
-        useBlocker: Boolean,
         cooldownSec: Int,
-        onHideTab: (Boolean) -> Unit,
-        onBlocker: (Boolean) -> Unit,
         onCooldown: (Int) -> Unit
     ) {
         Card(Modifier.fillMaxWidth()) {
@@ -373,45 +361,8 @@ class MainActivity : ComponentActivity() {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                OptionSwitch(
-                    "Hide the Reels tab",
-                    "Covers the Reels button in Instagram's bar.",
-                    hideTab,
-                    onHideTab
-                )
-                OptionSwitch(
-                    "Fallback cover",
-                    "Shown only if leaving Reels automatically fails.",
-                    useBlocker,
-                    onBlocker
-                )
                 CooldownRow(cooldownSec, onCooldown)
             }
-        }
-    }
-
-    @Composable
-    private fun OptionSwitch(
-        title: String,
-        subtitle: String,
-        checked: Boolean,
-        onChange: (Boolean) -> Unit
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(checked = checked, onCheckedChange = onChange)
         }
     }
 
@@ -420,7 +371,7 @@ class MainActivity : ComponentActivity() {
         PickerRow(
             title = "Wait before disabling",
             subtitle = "How long turning blocking off takes.",
-            options = listOf(0, 30, 60, 120, 300).map { it to cooldownLabel(it) },
+            options = Prefs.COOLDOWN_OPTIONS.map { it to cooldownLabel(it) },
             selected = seconds,
             onPick = onPick
         )
@@ -495,7 +446,6 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun cooldownLabel(seconds: Int): String = when (seconds) {
-    0 -> "No wait"
     30 -> "30 seconds"
     60 -> "1 minute"
     120 -> "2 minutes"
