@@ -90,8 +90,8 @@ Turn aShorts off in Accessibility settings first, then record:
 ## 4. Store listing (task 6)
 
 Play Console → Grow → Store presence → Main store listing. Text and graphics are in
-`fastlane/metadata/android/en-US/` (title 22/30, short description 77/80, full description
-1575/4000 characters; icon 512×512; feature graphic 1024×500).
+`fastlane/metadata/android/en-US/` (title 22/30, short description 74/80, full description
+980/4000 characters; icon 512×512; feature graphic 1024×500).
 
 **Phone screenshots (you):** Play needs at least 2 (portrait, 1080×1920 to 1080×2400 is ideal).
 Suggested set, captured on your phone:

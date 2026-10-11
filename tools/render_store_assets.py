@@ -96,8 +96,13 @@ def feature_graphic():
     title = ImageFont.truetype(FONT_BOLD, 2 * 92)
     tag = ImageFont.truetype(FONT_REGULAR, 2 * 40)
     x = 2 * 420
+    eyebrow = ImageFont.truetype(FONT_BOLD, 2 * 26)
+    cx = x
+    for ch in "REELS BLOCKER":  # PIL has no letter-spacing; track it by hand
+        d.text((cx, h / 2 - 2 * 128), ch, font=eyebrow, fill=(255, 255, 255, 200), anchor="ls")
+        cx += d.textlength(ch, font=eyebrow) + 2 * 5
     d.text((x, h / 2 - 2 * 20), "aShorts", font=title, fill="white", anchor="ls")
-    d.text((x, h / 2 + 2 * 56), "Keep the app. Lose the scroll.", font=tag,
+    d.text((x, h / 2 + 2 * 56), "Free. Lightweight. Private.", font=tag,
            fill=(255, 255, 255, 225), anchor="ls")
     return img.resize((1024, 500), Image.LANCZOS).convert("RGB")
 
