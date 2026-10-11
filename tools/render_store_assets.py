@@ -94,7 +94,7 @@ def feature_graphic():
     draw_mark(img, 2 * 70 - scale * 33, h / 2 - scale * 56, scale)
     d = ImageDraw.Draw(img)
     title = ImageFont.truetype(FONT_BOLD, 2 * 92)
-    tag = ImageFont.truetype(FONT_REGULAR, 2 * 40)
+    tag = ImageFont.truetype(FONT_REGULAR, 2 * 36)
     x = 2 * 420
     eyebrow = ImageFont.truetype(FONT_BOLD, 2 * 26)
     cx = x
