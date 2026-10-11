@@ -8,9 +8,21 @@ exact answers to give. Steps marked **(you)** need your account or your phone.
 | Signed bundle | `./gradlew :app:bundleRelease` → `app/build/outputs/bundle/release/app-release.aab` |
 | Upload key | `~/keys/ashorts-upload.jks` + `keystore.properties` (both private, never committed) |
 | Listing text + icon + feature graphic | `fastlane/metadata/android/en-US/` |
-| Privacy policy | `play/privacy-policy.md` → `python3 tools/build_privacy_html.py` → `play/privacy-policy.html` |
+| Privacy policy | `play/privacy-policy.md` → `python3 tools/build_privacy_html.py` → hosted on GitHub Pages (URL below) |
 | Contact email | jdardini@gmail.com (Store settings → Store listing contact details) |
 | Offline policy scan | `gplay preflight --file app/build/outputs/bundle/release/app-release.aab --listings-dir fastlane/metadata/android` |
+
+## Hosting the privacy policy (GitHub Pages)
+
+The repo is public at <https://github.com/jacopopper/aShorts> and GitHub Pages serves the `main`
+branch from its root, so the policy is live at
+<https://jacopopper.github.io/aShorts/play/privacy-policy.html> — that is the URL to paste into
+the Console. To update it, regenerate and push; the site rebuilds within a minute or two:
+
+```bash
+python3 tools/build_privacy_html.py
+git add play/privacy-policy.html && git commit -m "Privacy policy update" && git push
+```
 
 ## 0. Back up the upload key (you)
 
@@ -27,7 +39,8 @@ Accept the declarations.
 
 Play Console → Policy and programs → App content.
 
-**Privacy policy** — the public URL where `play/privacy-policy.html` is hosted.
+**Privacy policy** — paste `https://jacopopper.github.io/aShorts/play/privacy-policy.html`
+(live via GitHub Pages; see "Hosting the privacy policy").
 
 **Ads** — No, the app does not contain ads.
 

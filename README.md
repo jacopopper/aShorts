@@ -98,9 +98,16 @@ rotation and repositioned on the next scan; that is expected.
 python3 tools/render_store_assets.py   # Play icon + feature graphic from the launcher icon
 ```
 
+The repo lives on GitHub (<https://github.com/jacopopper/aShorts>), so you can clone it on
+another machine and pick up where you left off. Two files are deliberately not committed:
+`local.properties` (SDK path, per machine) and `keystore.properties` (release-signing
+passwords; copy it and `~/keys/ashorts-upload.jks` over privately). Debug builds need neither.
+
 Stack: Kotlin 2.1, AGP 8.10, Jetpack Compose (Material 3), minSdk 26 / targetSdk 36.
 
-Publishing on Google Play: see [play/PLAY-CONSOLE.md](play/PLAY-CONSOLE.md).
+Publishing on Google Play: see [play/PLAY-CONSOLE.md](play/PLAY-CONSOLE.md). The privacy policy
+is hosted from this repo on GitHub Pages:
+<https://jacopopper.github.io/aShorts/play/privacy-policy.html>.
 
 ## Testing
 
