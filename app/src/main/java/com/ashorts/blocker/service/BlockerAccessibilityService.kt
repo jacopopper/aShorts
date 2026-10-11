@@ -46,7 +46,6 @@ class BlockerAccessibilityService : AccessibilityService() {
     private var master: Boolean = Prefs.DEFAULT_MASTER
     private var hideTab: Boolean = Prefs.DEFAULT_HIDE_TAB
     private var useBlocker: Boolean = Prefs.DEFAULT_BLOCKER
-    private var aggressive: Boolean = Prefs.DEFAULT_AGGRESSIVE
 
     private var lastScanAt = 0L
     private var overlaysHiddenForOff = false
@@ -65,7 +64,7 @@ class BlockerAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this)
-        engine = DetectionEngine(InstagramRules.rules(Prefs.DEFAULT_AGGRESSIVE))
+        engine = DetectionEngine(InstagramRules.rules(aggressiveTextMatch = false))
         refreshScreenSize()
         gatekeeper = ReelsGatekeeper { node ->
             expandedTabBounds(
@@ -105,15 +104,6 @@ class BlockerAccessibilityService : AccessibilityService() {
         master = p.getBoolean(Prefs.KEY_MASTER, Prefs.DEFAULT_MASTER)
         hideTab = p.getBoolean(Prefs.KEY_HIDE_TAB, Prefs.DEFAULT_HIDE_TAB)
         useBlocker = p.getBoolean(Prefs.KEY_BLOCKER, Prefs.DEFAULT_BLOCKER)
-        val newAggressive = p.getBoolean(Prefs.KEY_AGGRESSIVE, Prefs.DEFAULT_AGGRESSIVE)
-        if (this::engine.isInitialized && newAggressive != aggressive) {
-            engine = DetectionEngine(InstagramRules.rules(newAggressive))
-        }
-        aggressive = newAggressive
-        if (this::overlay.isInitialized) {
-            overlay.barTheme = p.getString(Prefs.KEY_BAR_THEME, Prefs.DEFAULT_BAR_THEME)
-                ?: Prefs.DEFAULT_BAR_THEME
-        }
 
         if (this::overlay.isInitialized && this::gatekeeper.isInitialized) {
             if (!master) {

@@ -66,10 +66,8 @@ To uninstall: turn the accessibility service off first, then uninstall normally.
 | Setting | Meaning |
 | --- | --- |
 | Block Instagram Reels | Master switch. Turning it **off** triggers the strict countdown. |
-| Hide the Reels tab | The patch over the bottom-bar button. |
-| Instagram theme | Patch color. Auto follows the phone's theme; pick Dark or Light if Instagram's own appearance setting differs. |
-| Fallback cover | The minimal one-button cover, shown only if leaving Reels automatically fails. |
-| Aggressive matching | Backup: also treats screens *described* as "Reels" as the feed. Use when an Instagram update breaks id-based detection. May over-block. |
+| Hide the Reels tab | The patch over the bottom-bar button. Its color follows the phone's dark/light mode. |
+| Fallback cover | The minimal one-button cover, shown only if up to three automatic Backs fail to leave Reels. |
 | Wait before disabling | The strict-mode countdown length (off / 30 s / 1 min / 2 min / 5 min). |
 
 ## Troubleshooting
@@ -78,8 +76,7 @@ Instagram renames its internal view ids regularly. If blocking stops working aft
 
 1. Open aShorts → **Detection log**. It records every match (view id, description, bounds) and
    timestamps — check that *something* still fires when you open Instagram.
-2. If nothing fires, try **Aggressive matching**.
-3. If it still fails, update the substring lists in
+2. If nothing fires, update the substring lists in
    `app/src/main/java/com/ashorts/blocker/engine/InstagramRules.kt` — the log (shareable as
    text) tells you what the relevant nodes are called now. The engine and tests stay untouched.
 

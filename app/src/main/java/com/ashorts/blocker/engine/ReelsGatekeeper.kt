@@ -23,28 +23,30 @@ sealed class BlockerAction {
  *    transient false positive can never touch the user (stories once tripped the single-scan
  *    version of this rule).
  *  - Once confirmed, aShorts presses Back once, instantly: the feed closes and its audio stops.
- *    If the back works, nothing else ever shows.
- *  - If Reels is still detected [autoLeaveGraceMs] after the automatic back, the cover shows.
- *  - The cover's Leave button hides the cover and presses Back. Right after a manual leave,
- *    the Reels view tree can transiently linger during the back transition; a single detection
- *    in that window is ignored (this was the "press Leave twice" bug). Only a *second
- *    consecutive* detection within [manualLeaveGraceMs] re-covers — the back genuinely failed.
- *  - A scan without Reels hides the cover immediately (no lingering over the feed) and shows
- *    the tab patch when the tab is present.
+ *  - Detections within [settleMs] of a Back are the old screen lingering during the transition
+ *    and are ignored.
+ *  - Still in Reels after that? Instagram can stack several Reels screens (shared links,
+ *    DMs), so one Back is not always enough: press Back again, up to [maxBacks] in total.
+ *    Only when that is exhausted does the cover show.
+ *  - The cover's Leave button hides the cover and restarts the same Back sequence, so a single
+ *    tap gets out even through a stacked back history (one Back per tap used to land on the
+ *    next Reels screen and bring the cover straight back: the "press Leave twice" bug).
+ *  - A scan without Reels hides the cover immediately and shows the tab patch when the tab is
+ *    present.
  *  - [onTargetGone] resets everything (used when the watched app leaves the screen or blocking
  *    is off).
  */
 class ReelsGatekeeper(
-    private val autoLeaveGraceMs: Long = 1200,
-    private val manualLeaveGraceMs: Long = 1500,
+    private val settleMs: Long = 700,
+    private val maxBacks: Int = 3,
     private val patchBoundsFor: (NodeHandle) -> IntBounds
 ) {
 
     private var reelsVisible = false
-    private var autoLeaveAt = 0L
-    private var manualLeaveAt = 0L
-    private var detectionsSinceManualLeave = 0
     private var pendingEntryScans = 0
+    private var backsPressed = 0
+    private var lastBackAt = 0L
+    private var covered = false
 
     fun onScan(
         result: DetectionEngine.ScanResult,
@@ -63,29 +65,22 @@ class ReelsGatekeeper(
                     // Confirmed entry into Reels: leave instantly (also stops the audio).
                     reelsVisible = true
                     pendingEntryScans = 0
-                    autoLeaveAt = now
-                    actions += BlockerAction.PressBack
+                    actions += pressBack(now, first = true)
                 }
                 // First detection only: wait for a second consecutive scan.
-            } else {
-                val withinManualGrace =
-                    manualLeaveAt > 0 && now - manualLeaveAt <= manualLeaveGraceMs
-                if (withinManualGrace) {
-                    // Right after the user pressed Leave: one lingering detection is ignored,
-                    // two consecutive ones mean the back genuinely failed.
-                    detectionsSinceManualLeave++
-                    if (useCover && detectionsSinceManualLeave >= 2) {
-                        actions += BlockerAction.ShowCover
-                    }
-                } else if (useCover && now - autoLeaveAt > autoLeaveGraceMs) {
-                    // The automatic back did not get us out (deep link, stubborn back stack).
+            } else if (!covered && now - lastBackAt >= settleMs) {
+                if (backsPressed < maxBacks) {
+                    actions += pressBack(now, first = false)
+                } else if (useCover) {
+                    covered = true
                     actions += BlockerAction.ShowCover
                 }
             }
         } else {
             reelsVisible = false
             pendingEntryScans = 0
-            detectionsSinceManualLeave = 0
+            backsPressed = 0
+            covered = false
             actions += BlockerAction.HideCover
             val tab = result.reelsTab
             if (hideTab && tab != null) {
@@ -100,19 +95,24 @@ class ReelsGatekeeper(
 
     /** The cover's Leave button was pressed. */
     fun onManualLeave(now: Long): List<BlockerAction> {
-        manualLeaveAt = now
-        detectionsSinceManualLeave = 0
+        covered = false
         pendingEntryScans = 0
-        return listOf(BlockerAction.HideCover, BlockerAction.PressBack)
+        return listOf(BlockerAction.HideCover, pressBack(now, first = true))
     }
 
     /** The watched app is no longer on screen; reset all state. */
     fun onTargetGone(now: Long): List<BlockerAction> {
         reelsVisible = false
-        autoLeaveAt = 0L
-        manualLeaveAt = 0L
-        detectionsSinceManualLeave = 0
         pendingEntryScans = 0
+        backsPressed = 0
+        lastBackAt = 0L
+        covered = false
         return listOf(BlockerAction.HideCover, BlockerAction.HidePatch)
+    }
+
+    private fun pressBack(now: Long, first: Boolean): BlockerAction {
+        backsPressed = if (first) 1 else backsPressed + 1
+        lastBackAt = now
+        return BlockerAction.PressBack
     }
 }

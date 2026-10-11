@@ -103,15 +103,6 @@ class MainActivity : ComponentActivity() {
         var cooldownSec by remember(tick) {
             mutableIntStateOf(prefs.getInt(Prefs.KEY_COOLDOWN_SECONDS, Prefs.DEFAULT_COOLDOWN))
         }
-        var aggressive by remember(tick) {
-            mutableStateOf(prefs.getBoolean(Prefs.KEY_AGGRESSIVE, Prefs.DEFAULT_AGGRESSIVE))
-        }
-        var barTheme by remember(tick) {
-            mutableStateOf(
-                prefs.getString(Prefs.KEY_BAR_THEME, Prefs.DEFAULT_BAR_THEME)
-                    ?: Prefs.DEFAULT_BAR_THEME
-            )
-        }
 
         val serviceOk = remember(tick) { AppStatus.isServiceEnabled(ctx) }
         val overlayOk = remember(tick) { AppStatus.isOverlayGranted(ctx) }
@@ -228,16 +219,9 @@ class MainActivity : ComponentActivity() {
                 OptionsCard(
                     hideTab = hideTab,
                     useBlocker = useBlocker,
-                    aggressive = aggressive,
                     cooldownSec = cooldownSec,
-                    barTheme = barTheme,
-                    onBarTheme = {
-                        barTheme = it
-                        prefs.edit().putString(Prefs.KEY_BAR_THEME, it).apply()
-                    },
                     onHideTab = { hideTab = it; putBoolean(Prefs.KEY_HIDE_TAB, it) },
                     onBlocker = { useBlocker = it; putBoolean(Prefs.KEY_BLOCKER, it) },
-                    onAggressive = { aggressive = it; putBoolean(Prefs.KEY_AGGRESSIVE, it) },
                     onCooldown = {
                         cooldownSec = it
                         prefs.edit().putInt(Prefs.KEY_COOLDOWN_SECONDS, it).apply()
@@ -374,13 +358,9 @@ class MainActivity : ComponentActivity() {
     private fun OptionsCard(
         hideTab: Boolean,
         useBlocker: Boolean,
-        aggressive: Boolean,
         cooldownSec: Int,
-        barTheme: String,
-        onBarTheme: (String) -> Unit,
         onHideTab: (Boolean) -> Unit,
         onBlocker: (Boolean) -> Unit,
-        onAggressive: (Boolean) -> Unit,
         onCooldown: (Int) -> Unit
     ) {
         Card(Modifier.fillMaxWidth()) {
@@ -399,30 +379,11 @@ class MainActivity : ComponentActivity() {
                     hideTab,
                     onHideTab
                 )
-                if (hideTab) {
-                    PickerRow(
-                        title = "Instagram theme",
-                        subtitle = "Set this if Instagram's appearance differs from your phone's.",
-                        options = listOf(
-                            Prefs.THEME_AUTO to "Auto",
-                            Prefs.THEME_DARK to "Dark",
-                            Prefs.THEME_LIGHT to "Light"
-                        ),
-                        selected = barTheme,
-                        onPick = onBarTheme
-                    )
-                }
                 OptionSwitch(
                     "Fallback cover",
                     "Shown only if leaving Reels automatically fails.",
                     useBlocker,
                     onBlocker
-                )
-                OptionSwitch(
-                    "Aggressive matching",
-                    "Backup label matching for Instagram updates. May over-block.",
-                    aggressive,
-                    onAggressive
                 )
                 CooldownRow(cooldownSec, onCooldown)
             }
