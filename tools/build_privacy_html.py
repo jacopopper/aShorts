@@ -25,7 +25,8 @@ def inline(text, email):
     text = html.escape(text)
     if email:
         e = html.escape(email)
-        text = text.replace("[CONTACT_EMAIL]", f'<a href="mailto:{e}">{e}</a>')
+        text = text.replace("[CONTACT_EMAIL]", e)
+    text = re.sub(r"[\w.+-]+@[\w-]+\.[\w.-]+", lambda m: f'<a href="mailto:{m[0]}">{m[0]}</a>', text)
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
 
 

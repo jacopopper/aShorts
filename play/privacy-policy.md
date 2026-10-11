@@ -43,6 +43,6 @@ If this policy changes, the new version will be posted at this address with a ne
 
 ## Contact
 
-Questions: [CONTACT_EMAIL]
+Questions: jdardini@gmail.com
 
 aShorts is not affiliated with Instagram or Meta.
