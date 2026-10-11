@@ -8,12 +8,15 @@ package com.ashorts.blocker.engine
  * nodes. Wrappers fetch children and parents lazily, which keeps traversals cheap.
  */
 interface NodeHandle {
-    /** Fully-qualified resource id, e.g. "com.instagram.android:id/reel_viewer_root", or null. */
+    /** Fully-qualified resource id, e.g. "com.instagram.android:id/clips_tab", or null. */
     val viewId: String?
 
     val text: CharSequence?
     val contentDescription: CharSequence?
     val isClickable: Boolean
+
+    /** False when the node is in the tree but not actually shown to the user. */
+    val isVisibleToUser: Boolean
 
     /** Bounding box in screen coordinates. */
     val bounds: IntBounds

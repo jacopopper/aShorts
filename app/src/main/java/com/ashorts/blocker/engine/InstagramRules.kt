@@ -3,41 +3,31 @@ package com.ashorts.blocker.engine
 /**
  * Detection rules for Instagram (com.instagram.android).
  *
- * Instagram is a moving target: view ids change between releases and content descriptions are
- * localized. The primary signals here are locale-independent view-id substrings; the Reels tab
- * is additionally matched by its English description. When a new Instagram release breaks
- * detection, open the in-app detection log, find what the relevant nodes are called now, and
- * extend these lists.
+ * IMPORTANT terminology (learned the hard way from device logs):
+ * Instagram's internal namespace for the **Reels feed** is `clips_`
+ * (confirmed: `clips_tab` for the tab, `clips_viewer_debug_container` for the feed).
+ * The internal namespace for **stories** is `reel_` — the story viewer is ReelViewerFragment,
+ * and story-viewer ids look like `reel_viewer_...`. Patterns with `reel_` must therefore NEVER
+ * be treated as the Reels feed: doing so made aShorts press Back whenever a story opened,
+ * which broke continuous story browsing. Only evidence-backed `clips_` patterns are used.
  *
- * Evidence so far (from on-device detection logs):
- *  - Reels tab: com.instagram.android:id/clips_tab, contentDescription "Reels"
- *  - Reels viewer: com.instagram.android:id/clips_viewer_debug_container
+ * Content descriptions are localized, so the English "Reels" tab keyword is a fallback signal;
+ * when a new Instagram release breaks detection, the in-app detection log tells you what the
+ * relevant nodes are called now — extend these lists from evidence only.
  */
 object InstagramRules {
 
     const val PACKAGE = "com.instagram.android"
 
     private val SCREEN_ID_SUBSTRINGS = listOf(
-        "reel_viewer",
-        "reel_pager",
-        "reel_container",
-        "reel_feed",
-        "reels_feed",
-        "reel_recycler",
-        "clips_viewer",
+        "clips_viewer",   // confirmed on-device: clips_viewer_debug_container
         "clips_pager",
         "clips_feed",
         "clips_recycler"
     )
 
     private val TAB_ID_SUBSTRINGS = listOf(
-        "reel_tab",
-        "reels_tab",
-        "tab_reel",
-        "tab_reels",
-        "reel_button",
-        "reel_icon",
-        "clips_tab",   // confirmed on-device: com.instagram.android:id/clips_tab
+        "clips_tab",      // confirmed on-device
         "tab_clips"
     )
 
@@ -47,7 +37,7 @@ object InstagramRules {
         appPackage = PACKAGE,
         screenIdPatterns = SCREEN_ID_SUBSTRINGS.map { Regex(Regex.escape(it)) },
         // Aggressive mode: also treat any node described as "Reels" as the feed itself.
-        // Useful when id-based detection stops matching, but can over-block (e.g. in DMs).
+        // Use only when id-based detection stops matching; may over-block (e.g. in DMs).
         screenDescKeywords = if (aggressiveTextMatch) listOf("reels") else emptyList(),
         tabIdPatterns = TAB_ID_SUBSTRINGS.map { Regex(Regex.escape(it)) },
         tabDescKeywords = TAB_DESC_KEYWORDS

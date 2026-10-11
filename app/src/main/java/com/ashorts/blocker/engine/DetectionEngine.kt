@@ -10,6 +10,13 @@ import kotlin.math.min
  * Traversal is breadth-first with hard caps on visited nodes, depth, and children per node so a
  * scan costs at most a few milliseconds even inside Instagram's huge view hierarchies, and it
  * stops early as soon as everything it looks for has been found.
+ *
+ * Notes:
+ *  - The Reels screen is matched only via `clips_` ids (Instagram's reels namespace); `reel_`
+ *    belongs to stories and must never trigger blocking.
+ *  - A tab candidate must be actually visible to the user: Instagram keeps tab-bar nodes in the
+ *    tree behind fullscreen overlays (stories, reels), and a patch over such a node would sit
+ *    on top of the overlay's content.
  */
 class DetectionEngine(private val rules: AppBlockRules) {
 
@@ -54,7 +61,8 @@ class DetectionEngine(private val rules: AppBlockRules) {
                 }
             }
 
-            if (tabNode == null && node.isClickable && !node.bounds.isEmpty &&
+            if (tabNode == null && node.isClickable && node.isVisibleToUser &&
+                !node.bounds.isEmpty &&
                 node.bounds.top >= minTabTop &&
                 node.bounds.height <= maxTabHeight &&
                 node.bounds.width <= maxTabWidth

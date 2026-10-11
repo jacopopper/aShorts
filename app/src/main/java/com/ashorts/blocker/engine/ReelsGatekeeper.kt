@@ -19,17 +19,20 @@ sealed class BlockerAction {
  *
  * Behavior (times in elapsedRealtime milliseconds, supplied by the caller):
  *
- *  - Entering the Reels screen (transition from not-in-Reels): press Back once, instantly.
- *    This closes the feed and stops its audio. If the back works, nothing else ever shows.
+ *  - The Reels screen must be detected on TWO consecutive scans before anything happens, so a
+ *    transient false positive can never touch the user (stories once tripped the single-scan
+ *    version of this rule).
+ *  - Once confirmed, aShorts presses Back once, instantly: the feed closes and its audio stops.
+ *    If the back works, nothing else ever shows.
  *  - If Reels is still detected [autoLeaveGraceMs] after the automatic back, the cover shows.
  *  - The cover's Leave button hides the cover and presses Back. Right after a manual leave,
  *    the Reels view tree can transiently linger during the back transition; a single detection
- *    in that window is ignored (this was the "press Leave twice" bug: the cover used to reappear
- *    instantly). Only a *second consecutive* detection within [manualLeaveGraceMs] re-covers —
- *    that means the back genuinely failed.
+ *    in that window is ignored (this was the "press Leave twice" bug). Only a *second
+ *    consecutive* detection within [manualLeaveGraceMs] re-covers — the back genuinely failed.
  *  - A scan without Reels hides the cover immediately (no lingering over the feed) and shows
  *    the tab patch when the tab is present.
- *  - [onTargetGone] resets everything (used when Instagram leaves the screen or blocking is off).
+ *  - [onTargetGone] resets everything (used when the watched app leaves the screen or blocking
+ *    is off).
  */
 class ReelsGatekeeper(
     private val autoLeaveGraceMs: Long = 1200,
@@ -41,6 +44,7 @@ class ReelsGatekeeper(
     private var autoLeaveAt = 0L
     private var manualLeaveAt = 0L
     private var detectionsSinceManualLeave = 0
+    private var pendingEntryScans = 0
 
     fun onScan(
         result: DetectionEngine.ScanResult,
@@ -54,11 +58,15 @@ class ReelsGatekeeper(
             actions += BlockerAction.Record(result.matched, screenDetected = true)
             actions += BlockerAction.HidePatch
             if (!reelsVisible) {
-                // Just entered Reels: leave instantly (also stops the audio).
-                reelsVisible = true
-                autoLeaveAt = now
-                detectionsSinceManualLeave = 0
-                actions += BlockerAction.PressBack
+                pendingEntryScans++
+                if (pendingEntryScans >= 2) {
+                    // Confirmed entry into Reels: leave instantly (also stops the audio).
+                    reelsVisible = true
+                    pendingEntryScans = 0
+                    autoLeaveAt = now
+                    actions += BlockerAction.PressBack
+                }
+                // First detection only: wait for a second consecutive scan.
             } else {
                 val withinManualGrace =
                     manualLeaveAt > 0 && now - manualLeaveAt <= manualLeaveGraceMs
@@ -76,6 +84,7 @@ class ReelsGatekeeper(
             }
         } else {
             reelsVisible = false
+            pendingEntryScans = 0
             detectionsSinceManualLeave = 0
             actions += BlockerAction.HideCover
             val tab = result.reelsTab
@@ -93,15 +102,17 @@ class ReelsGatekeeper(
     fun onManualLeave(now: Long): List<BlockerAction> {
         manualLeaveAt = now
         detectionsSinceManualLeave = 0
+        pendingEntryScans = 0
         return listOf(BlockerAction.HideCover, BlockerAction.PressBack)
     }
 
-    /** Instagram (or the watched app) is no longer on screen; reset all state. */
+    /** The watched app is no longer on screen; reset all state. */
     fun onTargetGone(now: Long): List<BlockerAction> {
         reelsVisible = false
         autoLeaveAt = 0L
         manualLeaveAt = 0L
         detectionsSinceManualLeave = 0
+        pendingEntryScans = 0
         return listOf(BlockerAction.HideCover, BlockerAction.HidePatch)
     }
 }

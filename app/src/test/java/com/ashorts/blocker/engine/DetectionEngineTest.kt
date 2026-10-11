@@ -12,6 +12,7 @@ private class FakeNode(
     override val text: CharSequence? = null,
     override val contentDescription: CharSequence? = null,
     override val isClickable: Boolean = false,
+    override val isVisibleToUser: Boolean = true,
     override val bounds: IntBounds = IntBounds(0, 0, 100, 100),
     override val depth: Int = 0,
     private val children: List<NodeHandle> = emptyList()
@@ -37,7 +38,7 @@ class DetectionEngineTest {
         depth = 3
     )
     private val reelsTab = FakeNode(
-        viewId = "com.instagram.android:id/tab_icon_reel",
+        viewId = "com.instagram.android:id/clips_tab",
         isClickable = true,
         contentDescription = "Reels",
         bounds = IntBounds(432, 2280, 648, 2400),
@@ -45,20 +46,20 @@ class DetectionEngineTest {
     )
 
     @Test
-    fun detectsReelsScreenByViewId() {
+    fun detectsReelsScreenByClipsId() {
         val root = FakeNode(
             viewId = "com.instagram.android:id/main_tab_container",
             children = listOf(
-                FakeNode(viewId = "com.instagram.android:id/reel_viewer_root", depth = 1)
+                FakeNode(viewId = "com.instagram.android:id/clips_viewer_debug_container", depth = 1)
             )
         )
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
         assertTrue(result.reelsScreenDetected)
-        assertTrue(result.matched.any { it.contains("reel_viewer_root") })
+        assertTrue(result.matched.any { it.contains("clips_viewer_debug_container") })
     }
 
     @Test
-    fun detectsReelsScreenByClipsId() {
+    fun detectsReelsScreenByOtherClipsIds() {
         val root = FakeNode(
             children = listOf(
                 FakeNode(viewId = "com.instagram.android:id/clips_pager_fragment", depth = 1)
@@ -66,6 +67,25 @@ class DetectionEngineTest {
         )
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
         assertTrue(result.reelsScreenDetected)
+    }
+
+    /**
+     * Regression: Instagram's STORY viewer lives in the reel_ namespace (ReelViewerFragment).
+     * These ids once matched and made aShorts press Back whenever a story opened, breaking
+     * continuous story browsing. They must never be detected as the Reels feed.
+     */
+    @Test
+    fun neverMatchesTheStoryViewerNamespace() {
+        val storyViewer = FakeNode(
+            children = listOf(
+                FakeNode(viewId = "com.instagram.android:id/reel_viewer_root", depth = 1),
+                FakeNode(viewId = "com.instagram.android:id/reel_container_fragment", depth = 1),
+                FakeNode(viewId = "com.instagram.android:id/reel_pager", depth = 1)
+            )
+        )
+        val result = DetectionEngine(rules).scan(storyViewer, screenWidth, screenHeight)
+        assertFalse(result.reelsScreenDetected)
+        assertTrue(result.matched.isEmpty())
     }
 
     @Test
@@ -86,9 +106,9 @@ class DetectionEngineTest {
     }
 
     @Test
-    fun detectsReelsTabByIdPatternWithoutDescription() {
+    fun detectsReelsTabByConfirmedIdPatternWithoutDescription() {
         val tab = FakeNode(
-            viewId = "com.instagram.android:id/reel_tab",
+            viewId = "com.instagram.android:id/clips_tab",
             isClickable = true,
             bounds = IntBounds(432, 2280, 648, 2400),
             depth = 1
@@ -97,6 +117,25 @@ class DetectionEngineTest {
         val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
         assertNotNull(result.reelsTab)
         assertEquals(tab.bounds, result.reelsTab?.bounds)
+    }
+
+    /**
+     * Instagram keeps tab-bar nodes in the tree behind fullscreen overlays; a patch over a node
+     * that is not actually visible would float above the overlay's content (stories).
+     */
+    @Test
+    fun ignoresTabNodesThatAreNotVisibleToUser() {
+        val hiddenTab = FakeNode(
+            viewId = "com.instagram.android:id/clips_tab",
+            isClickable = true,
+            contentDescription = "Reels",
+            isVisibleToUser = false,
+            bounds = IntBounds(432, 2280, 648, 2400),
+            depth = 1
+        )
+        val root = FakeNode(children = listOf(hiddenTab))
+        val result = DetectionEngine(rules).scan(root, screenWidth, screenHeight)
+        assertNull(result.reelsTab)
     }
 
     @Test
@@ -159,7 +198,7 @@ class DetectionEngineTest {
     fun depthCapStopsTraversal() {
         val root = FakeNode(
             children = listOf(
-                FakeNode(viewId = "com.instagram.android:id/reel_viewer_root", depth = 1)
+                FakeNode(viewId = "com.instagram.android:id/clips_viewer_root", depth = 1)
             )
         )
         val result = DetectionEngine(rules.copy(maxDepth = 0))
@@ -171,7 +210,7 @@ class DetectionEngineTest {
     fun nodeCapStopsTraversal() {
         val root = FakeNode(
             children = listOf(
-                FakeNode(viewId = "com.instagram.android:id/reel_viewer_root", depth = 1)
+                FakeNode(viewId = "com.instagram.android:id/clips_viewer_root", depth = 1)
             )
         )
         val result = DetectionEngine(rules.copy(maxNodes = 1))
@@ -181,7 +220,7 @@ class DetectionEngineTest {
 
     @Test
     fun stopsEarlyWhenEverythingIsFound() {
-        val deepReelId = FakeNode(viewId = "com.instagram.android:id/reel_viewer_root", depth = 2)
+        val deepReelsId = FakeNode(viewId = "com.instagram.android:id/clips_viewer_debug_container", depth = 2)
         val root = FakeNode(
             children = listOf(
                 FakeNode(
@@ -189,14 +228,14 @@ class DetectionEngineTest {
                     depth = 1,
                     children = listOf(reelsTab)
                 ),
-                FakeNode(children = listOf(deepReelId), depth = 1)
+                FakeNode(children = listOf(deepReelsId), depth = 1)
             )
         )
         val result = DetectionEngine(rules.copy(maxNodes = 5))
             .scan(root, screenWidth, screenHeight)
         assertTrue(result.reelsScreenDetected)
         assertNotNull(result.reelsTab)
-        // With maxNodes=5 (root, tab bar, reels tab, second branch, deepReelId) everything fits.
+        // With maxNodes=5 (root, tab bar, reels tab, second branch, deepReelsId) everything fits.
     }
 
     // ----------------------------------------------------------- patch bounds expansion
@@ -205,7 +244,7 @@ class DetectionEngineTest {
     fun expandedTabBoundsCoverTheFullCellAndBarHeight() {
         // The matched node is just the icon; the visible button is the cell inside the bar.
         val icon = FakeNode(
-            viewId = "com.instagram.android:id/reel_tab_icon",
+            viewId = "com.instagram.android:id/clips_tab_icon",
             isClickable = true,
             contentDescription = "Reels",
             bounds = IntBounds(528, 2330, 560, 2360)

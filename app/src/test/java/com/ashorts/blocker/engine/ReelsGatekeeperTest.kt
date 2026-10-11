@@ -1,7 +1,6 @@
 package com.ashorts.blocker.engine
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -10,6 +9,7 @@ private class FakeTabNode(override val bounds: IntBounds) : NodeHandle {
     override val text: CharSequence? = null
     override val contentDescription: CharSequence? = "Reels"
     override val isClickable: Boolean = true
+    override val isVisibleToUser: Boolean = true
     override val depth: Int = 4
     override val childCount: Int = 0
     override fun childAt(index: Int): NodeHandle? = null
@@ -17,9 +17,12 @@ private class FakeTabNode(override val bounds: IntBounds) : NodeHandle {
 }
 
 /**
- * Replays the exact behaviors seen on-device (from the user's detection log) as pure timelines:
+ * Replays the exact behaviors seen on-device (from real detection logs) as pure timelines:
  * tab visible -> enters Reels -> automatic back -> lingering tree -> cover -> manual leave ->
  * lingering tree must NOT re-cover -> clean scan hides the cover.
+ *
+ * Entry into Reels requires TWO consecutive detections, so transient false positives (stories
+ * once tripped the single-scan rule) can never trigger anything.
  */
 class ReelsGatekeeperTest {
 
@@ -54,10 +57,32 @@ class ReelsGatekeeperTest {
     }
 
     @Test
-    fun `entering reels presses back exactly once and hides patch`() {
+    fun `a single reels detection never presses back`() {
         val g = gate()
         g.onScan(cleanScan(withTab = true), now = 0, hideTab = true, useCover = true)
         val actions = g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
+        assertTrue(actions.none { it is BlockerAction.PressBack })
+        assertTrue(actions.none { it is BlockerAction.ShowCover })
+    }
+
+    @Test
+    fun `a clean scan between pending detections cancels the entry`() {
+        val g = gate()
+        g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
+        g.onScan(cleanScan(withTab = true), now = 200, hideTab = true, useCover = true)
+        val next = g.onScan(reelsScan(now = 300), now = 300, hideTab = true, useCover = true)
+        assertTrue(next.none { it is BlockerAction.PressBack }) // still just the first detection
+
+        val confirmed = g.onScan(reelsScan(now = 500), now = 500, hideTab = true, useCover = true)
+        assertEquals(1, confirmed.count { it is BlockerAction.PressBack })
+    }
+
+    @Test
+    fun `second consecutive reels scan presses back exactly once and hides patch`() {
+        val g = gate()
+        g.onScan(cleanScan(withTab = true), now = 0, hideTab = true, useCover = true)
+        g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
+        val actions = g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true)
         assertEquals(1, actions.count { it is BlockerAction.PressBack })
         assertTrue(actions.any { it is BlockerAction.HidePatch })
         assertTrue(actions.none { it is BlockerAction.ShowCover })
@@ -67,7 +92,8 @@ class ReelsGatekeeperTest {
     fun `reels lingering within auto grace shows no cover`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
-        val actions = g.onScan(reelsScan(now = 600), now = 600, hideTab = true, useCover = true)
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true) // entry committed
+        val actions = g.onScan(reelsScan(now = 900), now = 900, hideTab = true, useCover = true)
         assertTrue(actions.none { it is BlockerAction.ShowCover })
     }
 
@@ -75,7 +101,8 @@ class ReelsGatekeeperTest {
     fun `cover appears after auto grace when back failed`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
-        val actions = g.onScan(reelsScan(now = 1400), now = 1400, hideTab = true, useCover = true)
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true) // entry committed
+        val actions = g.onScan(reelsScan(now = 1800), now = 1800, hideTab = true, useCover = true)
         assertTrue(actions.any { it is BlockerAction.ShowCover })
     }
 
@@ -91,7 +118,8 @@ class ReelsGatekeeperTest {
     fun `single lingering detection after manual leave does not re-cover`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
-        g.onScan(reelsScan(now = 1400), now = 1400, hideTab = true, useCover = true) // cover up
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true) // entry committed
+        g.onScan(reelsScan(now = 1800), now = 1800, hideTab = true, useCover = true) // cover up
         g.onManualLeave(now = 2000)
 
         // The back transition briefly leaves the reels tree visible (what used to make the
@@ -109,6 +137,7 @@ class ReelsGatekeeperTest {
     fun `two detections after manual leave mean back failed and cover returns`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true) // entry committed
         g.onManualLeave(now = 2000)
         val first = g.onScan(reelsScan(now = 2100), now = 2100, hideTab = true, useCover = true)
         val second = g.onScan(reelsScan(now = 2400), now = 2400, hideTab = true, useCover = true)
@@ -120,19 +149,23 @@ class ReelsGatekeeperTest {
     fun `target gone resets state so next reels entry presses back again`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = true)
-        g.onScan(reelsScan(now = 1400), now = 1400, hideTab = true, useCover = true) // cover up
-        val gone = g.onTargetGone(now = 1600)
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = true) // entry committed
+        g.onScan(reelsScan(now = 1800), now = 1800, hideTab = true, useCover = true) // cover up
+        val gone = g.onTargetGone(now = 1900)
         assertTrue(gone.any { it is BlockerAction.HideCover })
         assertTrue(gone.any { it is BlockerAction.HidePatch })
 
-        val reEntry = g.onScan(reelsScan(now = 3000), now = 3000, hideTab = true, useCover = true)
-        assertEquals(1, reEntry.count { it is BlockerAction.PressBack })
+        val first = g.onScan(reelsScan(now = 3000), now = 3000, hideTab = true, useCover = true)
+        val second = g.onScan(reelsScan(now = 3200), now = 3200, hideTab = true, useCover = true)
+        assertTrue(first.none { it is BlockerAction.PressBack }) // reset: needs confirmation again
+        assertEquals(1, second.count { it is BlockerAction.PressBack })
     }
 
     @Test
     fun `cover disabled never shows the cover`() {
         val g = gate()
         g.onScan(reelsScan(now = 100), now = 100, hideTab = true, useCover = false)
+        g.onScan(reelsScan(now = 350), now = 350, hideTab = true, useCover = false)
         val actions = g.onScan(reelsScan(now = 5000), now = 5000, hideTab = true, useCover = false)
         assertTrue(actions.none { it is BlockerAction.ShowCover })
     }
