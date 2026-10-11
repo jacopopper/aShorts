@@ -8,7 +8,8 @@ exact answers to give. Steps marked **(you)** need your account or your phone.
 | Signed bundle | `./gradlew :app:bundleRelease` → `app/build/outputs/bundle/release/app-release.aab` |
 | Upload key | `~/keys/ashorts-upload.jks` + `keystore.properties` (both private, never committed) |
 | Listing text + icon + feature graphic | `fastlane/metadata/android/en-US/` |
-| Privacy policy | `play/privacy-policy.md` → `python3 tools/build_privacy_html.py --email you@…` |
+| Privacy policy | `play/privacy-policy.md` → `python3 tools/build_privacy_html.py` → `play/privacy-policy.html` |
+| Contact email | jdardini@gmail.com (Store settings → Store listing contact details) |
 | Offline policy scan | `gplay preflight --file app/build/outputs/bundle/release/app-release.aab --listings-dir fastlane/metadata/android` |
 
 ## 0. Back up the upload key (you)
