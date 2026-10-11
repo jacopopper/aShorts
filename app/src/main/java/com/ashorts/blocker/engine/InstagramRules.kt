@@ -8,6 +8,10 @@ package com.ashorts.blocker.engine
  * is additionally matched by its English description. When a new Instagram release breaks
  * detection, open the in-app detection log, find what the relevant nodes are called now, and
  * extend these lists.
+ *
+ * Evidence so far (from on-device detection logs):
+ *  - Reels tab: com.instagram.android:id/clips_tab, contentDescription "Reels"
+ *  - Reels viewer: com.instagram.android:id/clips_viewer_debug_container
  */
 object InstagramRules {
 
@@ -32,7 +36,9 @@ object InstagramRules {
         "tab_reel",
         "tab_reels",
         "reel_button",
-        "reel_icon"
+        "reel_icon",
+        "clips_tab",   // confirmed on-device: com.instagram.android:id/clips_tab
+        "tab_clips"
     )
 
     private val TAB_DESC_KEYWORDS = listOf("reels")

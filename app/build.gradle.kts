@@ -12,11 +12,18 @@ android {
         applicationId = "com.ashorts.blocker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+
+        // Release builds watch Instagram only. Debug builds additionally watch the local
+        // test harness app so the emulator E2E suite can exercise the whole pipeline.
+        buildConfigField("String", "EXTRA_WATCHED_PACKAGE", "\"\"")
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "EXTRA_WATCHED_PACKAGE", "\"com.ashorts.blocker.harness\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -38,6 +45,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

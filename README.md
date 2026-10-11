@@ -88,10 +88,32 @@ rotation and repositioned on the next scan; that is expected.
 ```bash
 # JDK 17+ and an Android SDK with platform 35 are required (see local.properties)
 ./gradlew assembleDebug          # APK in app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest      # engine + patch-bounds unit tests (pure JVM)
+./gradlew testDebugUnitTest      # engine, gatekeeper and calibration tests (pure JVM)
 ```
 
 Stack: Kotlin 2.1, AGP 8.7, Jetpack Compose (Material 3), minSdk 26 / targetSdk 35.
+
+## Testing
+
+Three layers, so phone installs are (hopefully) boring:
+
+1. **Engine tests** (`testDebugUnitTest`, pure JVM). Detection rules, patch-bounds expansion,
+   the patch-calibration math, and the full decision timeline in `ReelsGatekeeperTest` —
+   including a replay of real on-device logs: enter Reels → auto back → lingering tree →
+   cover → manual leave → the cover must *not* flash back (the "press Leave twice" bug).
+2. **Device E2E** (`tools/e2e.sh`). If an adb device is attached (a phone over USB — the
+   recommended way to run it), the suite drives *that* device; otherwise it boots the `ashorts`
+   AVD, which requires hardware acceleration (`/dev/kvm` — the current dev box has no KVM, so
+   on it the suite only runs against a real phone). It installs `harness/` — a tiny fake
+   Instagram reproducing the exact structure aShorts matches (`clips_tab` button,
+   `clips_viewer_debug_container` screen, with a switch to ignore back presses) — and drives
+   five scenarios with screenshots and logcat:
+   patch covers the tab / covered tab swallows taps / link-opened Reels auto-backs out /
+   cover fallback appears only when back fails / Leave hides the cover without flashing back.
+3. **On-device observability.** The patch self-calibrates: it reads where its window actually
+   rendered, corrects any OEM offset, and writes the numbers to the Detection log
+   (`patch calibration: asked=[..] rendered=[..] corrected=[..]`). If placement is still off
+   on a specific phone, that log line contains everything needed to fix it.
 
 ## Roadmap
 

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "aShorts"
 include(":app")
+include(":harness")

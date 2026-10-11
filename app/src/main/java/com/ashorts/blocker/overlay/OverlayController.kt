@@ -14,17 +14,18 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.ashorts.blocker.engine.IntBounds
+import com.ashorts.blocker.log.DetectionLog
 
 /**
- * Draws the two overlays over Instagram:
+ * Draws the two overlays over the watched app:
  *
  *  1. a patch exactly on top of the Reels tab cell in the bottom bar — invisible (it matches the
- *     bar color) and untappable, because the overlay window swallows touches inside its bounds;
+ *     bar color) and untappable, because the overlay window swallows touches inside its bounds.
+ *     The patch is *self-calibrating*: after being placed it reads where the window actually
+ *     rendered and corrects any OEM offset, logging the correction (so misplacement reports come
+ *     with exact numbers).
  *  2. a minimal full-screen cover, used only as a fallback when aShorts' automatic back-press
  *     fails to leave the Reels feed (deep links, stubborn back stacks).
- *
- * All windows are TYPE_APPLICATION_OVERLAY (needs the "display over other apps" permission) and
- * are non-focusable so the system back gesture still reaches the app behind them.
  */
 class OverlayController(private val context: Context) {
 
@@ -39,6 +40,11 @@ class OverlayController(private val context: Context) {
     private var blockerView: View? = null
     private var patchView: View? = null
 
+    /** Last bounds we asked the window manager for, and persistent calibration offsets. */
+    private var lastApplied: IntBounds? = null
+    private var offsetX = 0
+    private var offsetY = 0
+
     private fun Int.dp(): Int = (this * density + 0.5f).toInt()
 
     private fun canDraw(): Boolean = Settings.canDrawOverlays(context)
@@ -49,9 +55,11 @@ class OverlayController(private val context: Context) {
 
     private fun overlayFlags(): Int =
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-    // ---------------------------------------------------------------- fallback blocker
+    // ---------------------------------------------------------------- fallback cover
 
     /** Minimal cover: one mark, one line, one way out. */
     fun showBlocker(onLeave: () -> Unit) {
@@ -116,7 +124,7 @@ class OverlayController(private val context: Context) {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            overlayFlags() or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            overlayFlags(),
             PixelFormat.OPAQUE
         )
         try {
@@ -139,19 +147,32 @@ class OverlayController(private val context: Context) {
 
     fun showPatch(bounds: IntBounds) {
         if (!canDraw()) return
+        // Apply the calibration learned so far; skip no-op updates so a static bar does not
+        // churn the window manager every scan.
+        val target = IntBounds(
+            bounds.left + offsetX,
+            bounds.top + offsetY,
+            bounds.right + offsetX,
+            bounds.bottom + offsetY
+        )
+        if (target == lastApplied && patchView != null) return
+        lastApplied = target
+
         val view = patchView
         if (view == null) {
             val v = createPatchView()
             try {
-                wm.addView(v, patchParams(bounds))
+                wm.addView(v, patchParams(target))
                 patchView = v
                 isPatchShowing = true
             } catch (_: Exception) {
                 // Ignore; will retry on the next scan.
+                return
             }
         } else {
-            runCatching { wm.updateViewLayout(view, patchParams(bounds)) }
+            runCatching { wm.updateViewLayout(view, patchParams(target)) }
         }
+        scheduleCalibration()
     }
 
     fun hidePatch() {
@@ -159,11 +180,66 @@ class OverlayController(private val context: Context) {
         runCatching { wm.removeView(v) }
         patchView = null
         isPatchShowing = false
+        lastApplied = null
     }
 
     fun hideAll() {
         hideBlocker()
         hidePatch()
+    }
+
+    /** Rotation/theme changes invalidate placement; forget the learned offsets. */
+    fun resetCalibration() {
+        offsetX = 0
+        offsetY = 0
+        lastApplied = null
+    }
+
+    /**
+     * Read where the patch window *actually* rendered and correct any offset. This is the fix
+     * for OEM window managers that place overlay windows with a status-bar/inset shift: the
+     * patch measures itself and moves to the right place, reporting what it saw.
+     */
+    private fun scheduleCalibration() {
+        val view = patchView ?: return
+        view.post { calibrate(view) }
+    }
+
+    private fun calibrate(view: View) {
+        if (!view.isAttachedToWindow) return // stale callback from a view we already removed
+        val intended = lastApplied ?: return
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        val corrected = PatchCalibration.correct(intended, loc[0], loc[1])
+        if (corrected == intended) return
+
+        offsetX += corrected.left - intended.left
+        offsetY += corrected.top - intended.top
+        lastApplied = corrected
+        DetectionLog.add(
+            listOf(
+                "patch calibration: asked=[${intended.left},${intended.top}] " +
+                    "rendered=[${loc[0]},${loc[1]}] corrected=[${corrected.left},${corrected.top}] " +
+                    "(dx=${corrected.left - intended.left}, dy=${corrected.top - intended.top})"
+            ),
+            screenDetected = false
+        )
+        runCatching { wm.updateViewLayout(view, patchParams(corrected)) }
+
+        // Verify the correction landed; if it still drifts, say so (numbers for the next fix).
+        view.post {
+            val again = IntArray(2)
+            view.getLocationOnScreen(again)
+            if (again[0] != corrected.left || again[1] != corrected.top) {
+                DetectionLog.add(
+                    listOf(
+                        "patch calibration: still drifting, rendered=[${again[0]},${again[1]}] " +
+                            "wanted=[${corrected.left},${corrected.top}]"
+                    ),
+                    screenDetected = false
+                )
+            }
+        }
     }
 
     private fun patchParams(b: IntBounds): WindowManager.LayoutParams =
@@ -180,9 +256,9 @@ class OverlayController(private val context: Context) {
         }
 
     /**
-     * Opaque patch matched to Instagram's bottom bar (black in dark mode, white in light mode)
-     * with rounded top corners. Touches inside its bounds land on this window instead of the
-     * Reels tab underneath.
+     * Opaque patch matched to the bottom bar (black in dark mode, white in light mode) with
+     * rounded top corners. Touches inside its bounds land on this window instead of the Reels
+     * tab underneath.
      */
     private fun createPatchView(): View = View(context).apply {
         background = GradientDrawable().apply {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors the ids aShorts matches in the real Instagram app. -->
+    <item type="id" name="clips_tab" />
+    <item type="id" name="clips_viewer_debug_container" />
+    <item type="id" name="harness_open_link" />
+    <item type="id" name="harness_ignore_backs" />
+    <item type="id" name="harness_back_count" />
+</resources>

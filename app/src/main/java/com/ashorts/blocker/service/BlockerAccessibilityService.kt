@@ -4,11 +4,18 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.graphics.Point
+import android.os.Build
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.WindowManager
+import com.ashorts.blocker.BuildConfig
+import com.ashorts.blocker.engine.BlockerAction
 import com.ashorts.blocker.engine.DetectionEngine
 import com.ashorts.blocker.engine.InstagramRules
+import com.ashorts.blocker.engine.IntBounds
+import com.ashorts.blocker.engine.ReelsGatekeeper
 import com.ashorts.blocker.engine.expandedTabBounds
 import com.ashorts.blocker.log.DetectionLog
 import com.ashorts.blocker.overlay.OverlayController
@@ -16,27 +23,21 @@ import com.ashorts.blocker.prefs.Prefs
 
 /**
  * The always-on part of aShorts. The system delivers accessibility events here; we look at them
- * only when Instagram is on screen:
+ * only while the watched app (Instagram, plus the test harness in debug builds) is on screen.
  *
- *  - no scan runs at all while any other app is in the foreground (and events from our own
- *    overlays are ignored), so the idle cost is effectively zero;
- *  - scans are throttled (240 ms normally, 700 ms while the fallback cover is up) and capped
- *    in size, keeping the battery/memory footprint minimal;
- *  - when the Reels tab is visible in Instagram's bottom bar, an invisible patch covers it;
- *  - when the Reels feed itself appears (deep link, DM, search...), aShorts presses Back
- *    immediately: the feed closes and its audio stops. Only if that fails does the minimal
- *    cover show up, with a single Leave button.
+ * All decisions go through [ReelsGatekeeper] (pure, unit-tested). This class only executes the
+ * resulting actions against real system APIs, which keeps the logic testable end-to-end
+ * without a device.
  */
 class BlockerAccessibilityService : AccessibilityService() {
 
-    companion object {
-        /** How long to wait for the automatic back-press to land before showing the cover. */
-        private const val AUTO_LEAVE_GRACE_MS = 1200L
-    }
-
     private lateinit var overlay: OverlayController
     private lateinit var engine: DetectionEngine
+    private lateinit var gatekeeper: ReelsGatekeeper
     private var prefs: SharedPreferences? = null
+
+    /** Real physical screen size — NOT resources.displayMetrics, which excludes system bars. */
+    private var screenSize = IntBounds(0, 0, 1080, 2340)
 
     private var master: Boolean = Prefs.DEFAULT_MASTER
     private var hideTab: Boolean = Prefs.DEFAULT_HIDE_TAB
@@ -44,9 +45,15 @@ class BlockerAccessibilityService : AccessibilityService() {
     private var aggressive: Boolean = Prefs.DEFAULT_AGGRESSIVE
 
     private var lastScanAt = 0L
-    private var autoLeaveAt = 0L
-    private var reelsVisible = false
     private var overlaysHiddenForOff = false
+
+    /** Instagram plus, in debug builds only, the local test harness. */
+    private val watchedPackages: Set<String> =
+        if (BuildConfig.EXTRA_WATCHED_PACKAGE.isEmpty()) {
+            setOf(InstagramRules.PACKAGE)
+        } else {
+            setOf(InstagramRules.PACKAGE, BuildConfig.EXTRA_WATCHED_PACKAGE)
+        }
 
     private val prefListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> reloadPrefs() }
@@ -55,6 +62,10 @@ class BlockerAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         overlay = OverlayController(this)
         engine = DetectionEngine(InstagramRules.rules(Prefs.DEFAULT_AGGRESSIVE))
+        refreshScreenSize()
+        gatekeeper = ReelsGatekeeper { node ->
+            expandedTabBounds(node, screenSize.width, screenSize.height)
+        }
         prefs = Prefs.get(this).also { it.registerOnSharedPreferenceChangeListener(prefListener) }
         DetectionLog.init(filesDir)
         reloadPrefs()
@@ -73,8 +84,11 @@ class BlockerAccessibilityService : AccessibilityService() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Bounds are stale after rotation/theme changes; hide until the next scan repositions it.
-        if (this::overlay.isInitialized) overlay.hidePatch()
+        if (this::overlay.isInitialized) {
+            overlay.resetCalibration()
+            overlay.hidePatch() // repositioned on the next scan
+        }
+        refreshScreenSize()
     }
 
     private fun reloadPrefs() {
@@ -88,13 +102,33 @@ class BlockerAccessibilityService : AccessibilityService() {
         }
         aggressive = newAggressive
 
-        if (this::overlay.isInitialized) {
+        if (this::overlay.isInitialized && this::gatekeeper.isInitialized) {
             if (!master) {
-                overlay.hideAll()
+                execute(gatekeeper.onTargetGone(SystemClock.elapsedRealtime()))
                 overlaysHiddenForOff = true
             } else {
                 overlaysHiddenForOff = false
             }
+        }
+    }
+
+    /** Physical screen size including system bars (the coordinate space of a11y node bounds). */
+    private fun refreshScreenSize() {
+        try {
+            val wm = getSystemService(WindowManager::class.java) ?: return
+            screenSize = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val b = wm.currentWindowMetrics.bounds
+                IntBounds(b.left, b.top, b.right, b.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                val display = wm.defaultDisplay ?: return
+                val p = Point()
+                @Suppress("DEPRECATION")
+                display.getRealSize(p)
+                IntBounds(0, 0, p.x, p.y)
+            }
+        } catch (_: Exception) {
+            // Keep the previous size.
         }
     }
 
@@ -103,75 +137,67 @@ class BlockerAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName) return // events from our own overlay windows
 
+        val now = SystemClock.elapsedRealtime()
+
         if (!master) {
             if (!overlaysHiddenForOff) {
-                overlay.hideAll()
+                execute(gatekeeper.onTargetGone(now))
                 overlaysHiddenForOff = true
-                reelsVisible = false
             }
             return
         }
         overlaysHiddenForOff = false
 
+        // Throttle: while the fallback cover is up we only need to notice leaving Reels.
         val throttleMs = if (overlay.isBlockerShowing) 700L else 240L
-        val now = SystemClock.elapsedRealtime()
         if (now - lastScanAt < throttleMs) return
         lastScanAt = now
 
-        // Find the Instagram window's root node. AccessibilityWindowInfo stopped exposing the
+        // Find the watched app's window root. AccessibilityWindowInfo stopped exposing the
         // package name (removed in Android 13), so we check the root node's package instead.
         var root: AccessibilityNodeInfo? = null
         for (w in windows) {
             val r = w.root ?: continue
-            if (r.packageName?.toString() == InstagramRules.PACKAGE) {
+            if (r.packageName?.toString() in watchedPackages) {
                 root = r
                 break
             }
         }
         if (root == null) {
-            // Instagram is not visible; make sure nothing of ours is left on screen.
-            if (overlay.isBlockerShowing || overlay.isPatchShowing) overlay.hideAll()
-            reelsVisible = false
+            // Watched app not visible; drop everything and reset.
+            execute(gatekeeper.onTargetGone(now))
             return
         }
 
-        val metrics = resources.displayMetrics
         val result = engine.scan(
             AccessibilityNodeHandle(root, 0),
-            metrics.widthPixels,
-            metrics.heightPixels
+            screenSize.width,
+            screenSize.height
         )
+        execute(gatekeeper.onScan(result, now, hideTab, useBlocker))
+    }
 
-        if (result.reelsScreenDetected) {
-            DetectionLog.add(result.matched, screenDetected = true)
-            overlay.hidePatch()
-            if (!reelsVisible) {
-                // Just entered Reels: leave instantly. This also stops the audio, and it lands
-                // the user back wherever they came from — usually invisible and silent.
-                reelsVisible = true
-                autoLeaveAt = now
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                lastScanAt = 0 // re-check immediately so the cover appears if we are still there
-            } else if (useBlocker && now - autoLeaveAt > AUTO_LEAVE_GRACE_MS) {
-                // The automatic back did not get us out (deep link, stubborn back stack).
-                overlay.showBlocker(onLeave = {
-                    overlay.hideBlocker()
+    private fun execute(actions: List<BlockerAction>) {
+        var pressedBack = false
+        for (action in actions) {
+            when (action) {
+                is BlockerAction.PressBack -> {
                     performGlobalAction(GLOBAL_ACTION_BACK)
-                    lastScanAt = 0
-                })
+                    pressedBack = true
+                }
+                is BlockerAction.ShowCover -> overlay.showBlocker(onLeave = { onManualLeave() })
+                is BlockerAction.HideCover -> overlay.hideBlocker()
+                is BlockerAction.ShowPatch -> overlay.showPatch(action.bounds)
+                is BlockerAction.HidePatch -> overlay.hidePatch()
+                is BlockerAction.Record -> DetectionLog.add(action.details, action.screenDetected)
             }
-        } else {
-            // Not on Reels. Drop the cover at the first clean scan — no lingering over the feed.
-            reelsVisible = false
-            if (overlay.isBlockerShowing) overlay.hideBlocker()
+        }
+        if (pressedBack) lastScanAt = 0 // re-scan right away; cover returns only if still needed
+    }
 
-            val tab = result.reelsTab
-            if (hideTab && tab != null) {
-                DetectionLog.add(result.matched, screenDetected = false)
-                overlay.showPatch(expandedTabBounds(tab, metrics.widthPixels, metrics.heightPixels))
-            } else {
-                overlay.hidePatch()
-            }
+    private fun onManualLeave() {
+        if (this::gatekeeper.isInitialized) {
+            execute(gatekeeper.onManualLeave(SystemClock.elapsedRealtime()))
         }
     }
 
