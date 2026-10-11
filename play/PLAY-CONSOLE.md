@@ -62,9 +62,15 @@ under the Families policy). "Could the app unintentionally appeal to children?" 
    > AccessibilityService listens only while the Instagram app is in the foreground and reads the
    > view identifiers and positions of on-screen elements to find two things: the Reels tab in the
    > bottom bar and the Reels viewer. When the Reels tab is visible, the app draws an overlay over
-   > it so it cannot be tapped. When the Reels viewer opens, the app performs a single Back action
-   > (performGlobalAction(GLOBAL_ACTION_BACK)) to close it. This is fixed, rule-based behavior:
-   > if Reels is shown, press Back. The app has no INTERNET permission. It does not collect,
+   > it so it cannot be tapped. To make that overlay match the bar, on Android 11+ it takes an
+   > in-memory accessibility screenshot (takeScreenshot), reads a few bar pixels next to the
+   > Reels tab, and discards the image immediately; screenshots are never stored or shared.
+   > When the Reels viewer opens, the app closes it: it performs Back
+   > (performGlobalAction(GLOBAL_ACTION_BACK), up to three times for stacked Reels screens) or,
+   > when Reels was opened from its own tab, clicks Instagram's Home tab
+   > (AccessibilityNodeInfo.ACTION_CLICK). It listens to click events only to notice a tap on
+   > the Reels tab. This is fixed, rule-based behavior: if Reels is shown, leave it. The app has
+   > no INTERNET permission. It does not collect,
    > store or share any personal or sensitive data, and it does not read text input or message
    > content. An in-app prominent disclosure explains this and requires the user to tap Agree
    > before the app opens Accessibility settings.
@@ -92,18 +98,16 @@ Turn aShorts off in Accessibility settings first, then record:
 
 Play Console → Grow → Store presence → Main store listing. Text and graphics are in
 `fastlane/metadata/android/en-US/` (title 22/30, short description 78/80, full description
-1065/4000 characters; icon 512×512; feature graphic 1024×500).
+1063/4000 characters; icon 512×512; feature graphic 1024×500).
 
-**Phone screenshots (you):** Play needs at least 2 (portrait, 1080×1920 to 1080×2400 is ideal).
-Suggested set, captured on your phone:
+**Phone screenshots:** `images/phoneScreenshots/1.png` (light) and `2.png` (dark) are ready:
+1080×1920 (9:16), 24-bit PNG, rendered from `play/generated/instagram-feed-*.png`. They are
+illustrative (generated photos, a drawn feed) and labelled as such. Play rejects screenshots
+whose long side is more than twice the short side, so never upload the 1080×2400 originals.
 
-1. aShorts main screen with "Blocking Reels".
-2. Instagram home with the Reels tab covered.
-3. The disclosure dialog (shows reviewers and users what it reads).
-4. The fallback "Reels is blocked" screen.
-
-Save them as `fastlane/metadata/android/en-US/images/phoneScreenshots/1.png`, `2.png`, … They may
-show your feed: crop or use a test account so no personal content appears.
+Optional real captures to add as `3.png`, `4.png`, … (you): the aShorts main screen, the
+disclosure dialog, the "Reels is blocked" cover. Use a test account or crop so no personal
+content appears, and pad or crop phone captures to 9:16 (`1080×1920`) before uploading.
 
 After the first manual upload you can push the listing with gplay:
 

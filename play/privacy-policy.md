@@ -13,7 +13,7 @@ aShorts does not collect, store on any server, sell or share any personal or sen
 aShorts uses Android's AccessibilityService API. This is the core feature of the app, and you turn it on yourself, after an in-app explanation that asks for your consent.
 
 - **What it reads:** only while the Instagram app is on screen, the identifiers and positions of on-screen elements (for example the Reels tab and the Reels viewer). Events from every other app are ignored.
-- **What it does with it:** decides whether Reels is showing, covers the Reels tab, and presses Back to close Reels.
+- **What it does with it:** decides whether Reels is showing, covers the Reels tab, and closes Reels by pressing Back or tapping Instagram's Home tab.
 - **What it does not do:** it does not read or record what you type, your messages, passwords, or the content of posts, and it does not track your activity.
 
 Everything is processed in memory on your device, as it happens.

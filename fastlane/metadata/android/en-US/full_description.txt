@@ -20,6 +20,6 @@ WHY
 Stop doomscrolling. Protect your focus and deep work. Build better digital habits and win back your time.
 
 HOW IT WORKS
-aShorts uses Android's Accessibility service. Only while Instagram is open, it reads the layout of the screen to find Reels, covers the tab and presses Back when Reels opens. It collects nothing. The app asks for your consent first, and you can turn it off anytime in Settings. It also needs "display over other apps" to draw the cover.
+aShorts uses Android's Accessibility service. Only while Instagram is open, it reads the layout of the screen to find Reels, covers the tab and closes Reels when it opens. It collects nothing. The app asks for your consent first, and you can turn it off anytime in Settings. It also needs "display over other apps" to draw the cover.
 
 Not affiliated with Instagram or Meta. Instagram is a trademark of Meta Platforms, Inc.
