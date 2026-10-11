@@ -24,7 +24,7 @@ aShorts uses the "display over other apps" permission only to draw the cover ove
 
 ## Data stored on your device
 
-- **Settings:** your aShorts options (for example strict-mode wait time).
+- **Settings:** your aShorts options (for example the wait time before blocking can be turned off).
 - **Detection log:** a short local log of what was detected (only the identifiers, labels and positions of the matched Instagram elements), so you can check that blocking works. It stays on your device and can be cleared in the app at any time. It leaves your device only if you share it yourself using the share button.
 
 Uninstalling the app deletes all of this.
