@@ -1,5 +1,7 @@
 # aShorts
 
+**Keep the app, lose the scroll.**
+
 An Android app that blocks **Instagram Reels**. No root, no Instagram modification, and no
 network access — the app holds no internet permission and cannot send data anywhere.
 
